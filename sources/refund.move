@@ -6,19 +6,39 @@ module refund::refund {
     use sui::tx_context::{TxContext, sender};
 	use sui::coin::{Self, Coin};
     use sui::transfer;
-    use sui::balance::{Self, Balance};
+    use sui::balance;
     use sui::object::{Self, UID};
     use sui::table::{Self, Table};
     use std::vector;
-    use std::option::{Option, some, none};
     use sui::package::{Self, Publisher};
     use sui::sui::SUI;
+    use sui::clock::{Self, Clock};
+    use std::option::{Self, Option, some, none, is_some};
     
-    use refund::math::div;
+    use refund::math::{mul, div};
+    use refund::pool::{Self, Pool, funds, funders_mut, funds_mut};
+    use refund::table::{Self as refund_table};
+    use refund::accounting::{
+        Self, Accounting,
+        total_to_refund, total_raised, total_refunded, total_boosted,
+        total_to_refund_mut, total_raised_mut, total_refunded_mut
+    };
 
     const EInvalidPublisher: u64 = 0;
     const EInvalidAddress: u64 = 1;
     const EAddressesAmountsVecLenMismatch: u64 = 2;
+    const EPoolUnderfunded: u64 = 3;
+    const EInvalidTimeoutTimestamp: u64 = 4;
+    const ETimeoutTimestampIsNone: u64 = 5;
+    const ECurrentTimeNotAboveTimeout: u64 = 6;
+    
+    const ENotAddressAdditionPhase: u64 = 10;
+    const ENotTimeoutSetupPhase: u64 = 11;
+    const ENotFundingPhase: u64 = 12;
+    const ENotClaimPhase: u64 = 13;
+    const ENotReclaimPhase: u64 = 14;
+
+    friend refund::booster;
 
     // OTW
     struct REFUND has drop {}
@@ -33,22 +53,19 @@ module refund::refund {
     struct RefundPool has key {
         id: UID,
         unclaimed: Table<address, u64>,
-        funds: Balance<SUI>,
+        base_pool: Pool,
+        booster_pool: Pool,
         accounting: Accounting,
+        // u8 bit flag corresponding to the state of the refun process
+        // 0 --> Address addition phase
+        // 1 --> Timeout Setup phase
+        // 2 --> Funding phase
+        // 3 --> Claim phase
+        // 4 --> Reclaim phase
+        phase: u8,
+        timeout_ts: Option<u64>,
     }
-
-    /// Contains accounting details relevant to the management of the RefundPool.
-    ///
-    /// Fields:
-    /// - `total_refunded`: The cumulative amount of funds that have been refunded to users. This includes both standard and boosted refunds.
-    /// - `total_boosted`: The total amount of funds provided as part of boosted refunds. This figure helps track the additional funds given out as part of special refund conditions, such as the 150% refund scenario.
-    /// - `current_liability`: Represents the total amount of funds that the RefundPool is currently obligated to pay out. This includes all unclaimed refunds and is used to manage the financial health and obligations of the pool.
-    struct Accounting has store {
-        total_refunded: u64,
-        total_boosted: u64,
-        current_liability: u64,
-    }
-
+    
     /// Initializes the refund module during contract publishing.
     /// Sets up the refund pool and transfers ownership from the publisher to the sender.
     fun init(otw: REFUND, ctx: &mut TxContext) {
@@ -59,25 +76,18 @@ module refund::refund {
         let list = RefundPool {
             id: object::new(ctx),
             unclaimed: table::new(ctx),
-            funds: balance::zero(),
-            accounting: Accounting {
-                total_refunded: 0,
-                total_boosted: 0,
-                current_liability: 0,
-            }
+            base_pool: pool::new(ctx),
+            booster_pool: pool::new(ctx),
+            accounting: accounting::new(),
+            phase: 0,
+            timeout_ts: none()
         };
 
         transfer::public_transfer(publisher, sender);
         transfer::share_object(list);
     }
 
-    /// Permissionless endpoint for funding therefund pool with the given SUI coin.
-    public entry fun fund(
-        pool: &mut RefundPool,
-        coin: Coin<SUI>,
-    ) {
-        balance::join(&mut pool.funds, coin::into_balance(coin)); 
-    }
+    // === Phase 0: Setup ===
 
     /// Adds addresses and corresponding amounts to the refund pool. This endpoint
     /// is reserved to Aldrin, i.e the owner of the `Publisher` object
@@ -94,15 +104,17 @@ module refund::refund {
         addresses: vector<address>,
         amounts: vector<u64>,
     ) {
-        assert!(package::from_module<REFUND>(pub), EInvalidPublisher);
+        assert_address_addition_phase(pool);
+        assert_publisher(pub);
         assert!(vector::length(&addresses) == vector::length(&amounts), EAddressesAmountsVecLenMismatch);
         
         let len = vector::length(&addresses);
 
         while (len > 0) {
             let amount = vector::pop_back(&mut amounts);
-
-            pool.accounting.current_liability = pool.accounting.current_liability + amount;
+            
+            let total_to_refund = total_to_refund_mut(&mut pool.accounting);
+            *total_to_refund = *total_to_refund + amount;
 
             table::add(
                 &mut pool.unclaimed,
@@ -116,6 +128,71 @@ module refund::refund {
         vector::destroy_empty(addresses);
         vector::destroy_empty(amounts);
     }
+
+    // === Phase 1: Timeout setup ===
+
+    public entry fun set_timeout_ts(
+        pub: &Publisher,
+        pool: &mut RefundPool,
+        timeout_ts: u64,
+        clock: &Clock,
+    ) {
+        assert_timeout_setup_phase(pool);
+        assert_publisher(pub);
+        assert!(timeout_ts > clock::timestamp_ms(clock), EInvalidTimeoutTimestamp);
+
+        option::fill(&mut pool.timeout_ts, timeout_ts);
+    }
+
+    // === Phase 2: Funding ===
+
+    /// Permissionless endpoint for funding the fund pool with the given SUI coin.
+    public entry fun fund(
+        pool: &mut RefundPool,
+        coin: Coin<SUI>,
+        ctx: &mut TxContext,
+    ) {
+        assert_funding_phase(pool);
+
+        let amount = coin::value(&coin);
+        refund_table::insert_or_add(funders_mut(&mut pool.base_pool), sender(ctx), amount);
+
+        // If overfunded then return the excess
+        let total_to_refund = total_to_refund(&pool.accounting);
+        let total_raised = total_raised_mut(&mut pool.accounting);
+
+        let is_overfunded = *total_raised + amount > total_to_refund;
+        if (is_overfunded) {
+            let excess_amount = *total_raised + amount - total_to_refund;
+            let excess = coin::split(&mut coin, excess_amount, ctx);
+
+            transfer::public_transfer(excess, sender(ctx));
+            // TODO: Improve arithmetic
+            *total_raised = total_to_refund;
+        } else {
+            *total_raised = *total_raised + amount;
+        };
+
+        balance::join(funds_mut(&mut pool.base_pool), coin::into_balance(coin)); 
+    }
+    
+    public entry fun withdraw_funds(
+        pool: &mut RefundPool,
+        amount: u64,
+        ctx: &mut TxContext,
+    ) {
+        assert_funding_phase(pool);
+
+        refund_table::remove_or_subtract(funders_mut(&mut pool.base_pool), sender(ctx), amount);
+
+        let total_raised = total_raised_mut(&mut pool.accounting);
+        *total_raised = *total_raised - amount;
+
+        let funds = coin::from_balance(balance::split(funds_mut(&mut pool.base_pool), amount) , ctx);
+        transfer::public_transfer(funds, sender(ctx));
+    }
+
+    // === Phase 3: Claim Refund ===
 
     /// Allows a claimer to claim their refund from the pool. This endpoint
     /// should be called by the address registered in the `unclaimed` table.
@@ -131,55 +208,70 @@ module refund::refund {
         let sender = sender(ctx);
         assert!(table::contains(&pool.unclaimed, sender), EInvalidAddress);
 
-        let refund_amount = table::remove(&mut pool.unclaimed, sender);
-        
-        pool.accounting.total_refunded = pool.accounting.total_refunded + refund_amount;
-        pool.accounting.current_liability = pool.accounting.current_liability - refund_amount;
-
-        let funds = balance::split(&mut pool.funds, refund_amount);
-
-        transfer::public_transfer(coin::from_balance(funds, ctx), sender);
+        claim_refund_(pool, sender, ctx);
     }
     
-    /// Allows an affected address to claim a boosted refund to a new address.
-    /// The refund amount is increased by a boost calculated as half of the
-    /// original refund amount. The resulting total refund corresponds to 1.5x
-    /// the actual amount lost in the loss envent.
-    /// 
-    /// This endpoint is reserved to Aldrin, i.e. the owner of the `Publisher` object.
-    /// The refund boost is limited to user who refund via the Rinbot account.
-    /// When a user claims the refund with 1.5x boost, Aldrin will call
-    /// `claim_refund_boosted` with the `affected_address` being the user address
-    /// original affected by the loss event, and `new_address` being the associated
-    /// Rinbot account address.
-    /// 
-    /// #### Panics
-    /// - If the publisher is not valid.
-    /// - If the affected address does not exist in the unclaimed refunds list.
-    public entry fun claim_refund_boosted(
-        pub: &Publisher,
+    public(friend) fun claim_refund_(
         pool: &mut RefundPool,
-        affected_address: address,
-        new_address: address,
+        receiver: address,
         ctx: &mut TxContext,
     ) {
-        assert!(package::from_module<REFUND>(pub), EInvalidPublisher);
-        assert!(table::contains(&pool.unclaimed, affected_address), EInvalidAddress);
+        assert_claim_phase(pool);
 
-        let refund_amount = table::remove(&mut pool.unclaimed, affected_address);
-        let boost = div(refund_amount, 2);
-        let boosted_refund_amount = refund_amount + boost;
+        let refund_amount = table::remove(&mut pool.unclaimed, receiver);
+        
+        let total_refunded = total_refunded_mut(&mut pool.accounting);
+        *total_refunded = *total_refunded + refund_amount;
 
-        pool.accounting.total_refunded = pool.accounting.total_refunded + refund_amount;
-        pool.accounting.total_boosted = pool.accounting.total_boosted + boost;
-        pool.accounting.current_liability = pool.accounting.current_liability - refund_amount;
+        let funds = balance::split(funds_mut(&mut pool.base_pool), refund_amount);
 
-        let funds = balance::split(&mut pool.funds, boosted_refund_amount);
-
-        transfer::public_transfer(coin::from_balance(funds, ctx), new_address);
+        transfer::public_transfer(coin::from_balance(funds, ctx), receiver);
     }
 
+    // === Phase 4: Reclaim Fund ===
+
+    public entry fun reclaim_fund(
+        pool: &mut RefundPool,
+        ctx: &mut TxContext,
+    ) {
+        assert_reclaim_phase(pool);
+
+        let funders = funders_mut(&mut pool.base_pool);
+        assert!(table::contains(funders, sender(ctx)), 0); // TODO: err code
+
+        let total_raised = total_raised(&pool.accounting);
+        let funding_amount = table::remove(funders, sender(ctx));
+
+        let is_last = table::is_empty(funders);
+        let funds = funds_mut(&mut pool.base_pool);
+        
+        let reclaim_amount = if (is_last) {
+            balance::value(funds)
+        } else {
+            let leftovers = balance::value(funds);
+
+            // ReclaimAmount = Leftovers * % Share <=>
+            // ReclaimAmount = Leftovers * FundingAmount/TotalRaised
+            // 
+            // We first upscale then downscale
+            div(
+                mul(leftovers, funding_amount),
+                total_raised
+            )
+        };
+
+        let reclaim_funds = coin::from_balance(balance::split(funds, reclaim_amount), ctx);
+        transfer::public_transfer(reclaim_funds, sender(ctx));
+    }
+    
     // === Getters ===
+
+    public fun unclaimed(pool: &RefundPool): &Table<address, u64> { &pool.unclaimed }
+    public fun base_pool(pool: &RefundPool): &Pool { &pool.base_pool}
+    public fun booster_pool(pool: &RefundPool): &Pool { &pool.base_pool }
+    public fun accounting(pool: &RefundPool): &Accounting { &pool.accounting }
+    public fun phase(pool: &RefundPool): u8 { pool.phase }
+    public fun timeout_ts(pool: &RefundPool): Option<u64> { pool.timeout_ts }
 
     public fun amount_to_claim(pool: &RefundPool, claimer: address): Option<u64> {
         if (table::contains(&pool.unclaimed, claimer)) {
@@ -188,42 +280,98 @@ module refund::refund {
             none()
         }
     }
-    public fun funding(pool: &RefundPool): u64 { balance::value(&pool.funds) }
-    public fun total_refunded(pool: &RefundPool): u64 { pool.accounting.total_refunded }
-    public fun total_boosted(pool: &RefundPool): u64 { pool.accounting.total_boosted }
-    public fun current_liability(pool: &RefundPool): u64 { pool.accounting.current_liability }
     
-    /// Calculates the current liability of the RefundPool, considering the boosted refund scenario.
-    ///
-    /// This function computes the total current liability of the pool and then adds an additional 50% to model
-    /// the scenario where all outstanding refunds are claimed with a 150% boost. This is useful for assessing
-    /// the potential maximum liability under boosted refund conditions.
-    public fun current_liability_boosted(pool: &RefundPool): u64 { pool.accounting.current_liability + div(pool.accounting.current_liability, 2) }
+    public fun get_total_to_refund(pool: &RefundPool): u64 { total_to_refund(&pool.accounting) }
+    public fun get_total_raised(pool: &RefundPool): u64 { total_raised(&pool.accounting) }
+    public fun get_total_refunded(pool: &RefundPool): u64 { total_refunded(&pool.accounting) }
+    public fun get_total_boosted(pool: &RefundPool): u64 { total_boosted(&pool.accounting) }
+    public fun base_funds(pool: &RefundPool): u64 { balance::value(funds(&pool.base_pool)) }
+    public fun booster_funds(pool: &RefundPool): u64 { balance::value(funds(&pool.booster_pool)) }
+    public fun current_liabilities(pool: &RefundPool): u64 { accounting::current_liabilities(&pool.accounting) }
+
+    // === Mutators (Friends) ===
     
-    /// Calculates the unfunded liability of the RefundPool.
-    ///
-    /// This function determines the difference between the current liabilities (the total amount the pool
-    /// needs to refund) and the available funds in the pool. If the available funds are sufficient to cover
-    /// all liabilities, the unfunded liability is zero. Otherwise, it represents the shortfall that must be
-    /// addressed to fully fund all refund claims.
-    public fun unfunded_liability(pool: &RefundPool): u64 {
-        let available = balance::value(&pool.funds);
-        if (available >= pool.accounting.current_liability) {
-            0
-        } else {
-            pool.accounting.current_liability - available
-        }
+    public(friend) fun unclaimed_mut(pool: &mut RefundPool): &mut Table<address, u64> { &mut pool.unclaimed }
+    public(friend) fun accounting_mut(pool: &mut RefundPool): &mut Accounting { &mut pool.accounting }
+    public(friend) fun booster_pool_mut(pool: &mut RefundPool): &mut Pool { &mut pool.base_pool }
+
+    // === Phase Transitions ===
+
+    public entry fun start_timeout_setup_phase(
+        pub: &Publisher,
+        pool: &mut RefundPool,
+    ) {
+        assert_address_addition_phase(pool);
+        assert_publisher(pub);
+
+        next_phase(pool)
+    }
+    
+    public entry fun start_funding_phase(
+        pub: &Publisher,
+        pool: &mut RefundPool,
+    ) {
+        assert_timeout_setup_phase(pool);
+        assert!(is_some(&pool.timeout_ts), ETimeoutTimestampIsNone);
+        assert_publisher(pub);
+
+        next_phase(pool)
     }
 
-    /// Calculates the unfunded liability of the RefundPool under boosted refund conditions.
-    ///
-    /// Similar to `unfunded_liability`, but considers the scenario where all refunds are boosted by 50%.
-    /// This function first calculates the standard unfunded liability, then adds 50% of that liability to
-    /// model the additional funds that would be required if all refunds were claimed with a 150% boost.
-    public fun unfunded_liability_boosted(pool: &RefundPool): u64 {
-        let unfunded_liability = unfunded_liability(pool);
-        unfunded_liability + div(unfunded_liability, 2)
+    public entry fun start_claim_phase(
+        pool: &mut RefundPool,
+    ) {
+        assert_funding_phase(pool);
+        let total_to_refund = total_to_refund(&pool.accounting);
+        let total_raised = total_raised(&pool.accounting);
+        assert!(total_to_refund == total_raised, EPoolUnderfunded);
+
+        next_phase(pool)
     }
+    
+    public entry fun start_reclaim_phase(
+        pool: &mut RefundPool,
+        clock: &Clock,
+    ) {
+        assert_claim_phase(pool);
+
+        let timeout_ts = option::borrow(&pool.timeout_ts);
+        assert!(clock::timestamp_ms(clock) >= *timeout_ts, ECurrentTimeNotAboveTimeout);
+
+        next_phase(pool)
+    }
+
+    fun next_phase(pool: &mut RefundPool) {
+        pool.phase = pool.phase + 1;
+    }
+
+    // === Assertions ===
+
+    public fun assert_publisher(pub: &Publisher) {
+        assert!(package::from_module<REFUND>(pub), EInvalidPublisher);
+    }
+    
+    fun assert_address_addition_phase(pool: &RefundPool) {
+        assert!(pool.phase == 0, ENotAddressAdditionPhase);
+    }
+    
+    fun assert_timeout_setup_phase(pool: &RefundPool) {
+        assert!(pool.phase == 1, ENotTimeoutSetupPhase);
+    }
+    
+    public(friend) fun assert_funding_phase(pool: &RefundPool) {
+        assert!(pool.phase == 2, ENotFundingPhase);
+    }
+    
+    public(friend) fun assert_claim_phase(pool: &RefundPool) {
+        assert!(pool.phase == 3, ENotClaimPhase);
+    }
+    
+    public(friend) fun assert_reclaim_phase(pool: &RefundPool) {
+        assert!(pool.phase == 4, ENotReclaimPhase);
+    }
+
+    // === Test Functions ===
 
     #[test_only]
     public fun get_otw_for_testing(): REFUND {
