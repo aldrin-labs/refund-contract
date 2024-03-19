@@ -1,4 +1,3 @@
-// wrapper for module turbos_clmm::swap_router
 #[allow(lint(self_transfer))]
 module refund::refund {
     use sui::tx_context::{TxContext, sender};
@@ -68,7 +67,7 @@ module refund::refund {
         addresses: vector<address>,
         amounts: vector<u64>,
     ) {
-        assert!(package::from_package<REFUND>(pub), EInvalidPublisher);
+        assert!(package::from_module<REFUND>(pub), EInvalidPublisher);
         assert!(vector::length(&addresses) == vector::length(&amounts), EAddressesAmountsVecLenMismatch);
         
         let len = vector::length(&addresses);
@@ -111,13 +110,14 @@ module refund::refund {
     public entry fun claim_refund_boosted(
         pub: &Publisher,
         pool: &mut RefundPool,
-        receiver: address,
+        affected_address: address,
+        new_address: address,
         ctx: &mut TxContext,
     ) {
-        assert!(package::from_package<REFUND>(pub), EInvalidPublisher);
-        assert!(table::contains(&pool.unclaimed, receiver), EInvalidAddress);
+        assert!(package::from_module<REFUND>(pub), EInvalidPublisher);
+        assert!(table::contains(&pool.unclaimed, affected_address), EInvalidAddress);
 
-        let refund_amount = table::remove(&mut pool.unclaimed, receiver);
+        let refund_amount = table::remove(&mut pool.unclaimed, affected_address);
         let boost = div(refund_amount, 2);
         let boosted_refund_amount = refund_amount + boost;
 
@@ -127,7 +127,7 @@ module refund::refund {
 
         let funds = balance::split(&mut pool.funds, boosted_refund_amount);
 
-        transfer::public_transfer(coin::from_balance(funds, ctx), receiver);
+        transfer::public_transfer(coin::from_balance(funds, ctx), new_address);
     }
 
     // === Getters ===
@@ -158,5 +158,15 @@ module refund::refund {
     public fun unfunded_liability_boosted(pool: &RefundPool): u64 {
         let unfunded_liability = unfunded_liability(pool);
         unfunded_liability + div(unfunded_liability, 2)
+    }
+
+    #[test_only]
+    public fun get_otw_for_testing(): REFUND {
+        REFUND {}
+    }
+    
+    #[test_only]
+    public fun init_test(otw: REFUND, ctx: &mut TxContext) {
+        init(otw, ctx)
     }
 }
