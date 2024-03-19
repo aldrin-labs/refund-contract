@@ -8,6 +8,7 @@ module refund::refund {
     use sui::object::{Self, UID};
     use sui::table::{Self, Table};
     use std::vector;
+    use std::option::{Option, some, none};
     use sui::package::{Self, Publisher};
     use sui::sui::SUI;
     
@@ -131,6 +132,14 @@ module refund::refund {
 
     // === Getters ===
 
+    public fun amount_to_claim(pool: &RefundPool, claimer: address): Option<u64> {
+        if (table::contains(&pool.unclaimed, claimer)) {
+            some(*table::borrow(&pool.unclaimed, claimer))
+        } else {
+            none()
+        }
+    }
+    public fun funding(pool: &RefundPool): u64 { balance::value(&pool.funds) }
     public fun total_refunded(pool: &RefundPool): u64 { pool.accounting.total_refunded }
     public fun total_boosted(pool: &RefundPool): u64 { pool.accounting.total_boosted }
     public fun current_liability(pool: &RefundPool): u64 { pool.accounting.current_liability }
