@@ -3,17 +3,18 @@
 // claiming refunds and boosted refunds, and various getters for information about the pool and refunds.
 #[allow(lint(self_transfer))]
 module refund::refund {
+    // use std::debug::print;
     use sui::tx_context::{TxContext, sender};
 	use sui::coin::{Self, Coin};
     use sui::transfer;
     use sui::balance;
-    use sui::object::{Self, UID};
+    use sui::object::{Self, UID, ID};
     use sui::table::{Self, Table};
     use std::vector;
     use sui::package::{Self, Publisher};
     use sui::sui::SUI;
     use sui::clock::{Self, Clock};
-    use std::option::{Self, Option, some, none, is_some};
+    use std::option::{Self, Option, some, none};
     
     use refund::math::{mul, div};
     use refund::pool::{Self, Pool, funds, funders_mut, funds_mut};
@@ -29,14 +30,12 @@ module refund::refund {
     const EAddressesAmountsVecLenMismatch: u64 = 2;
     const EPoolUnderfunded: u64 = 3;
     const EInvalidTimeoutTimestamp: u64 = 4;
-    const ETimeoutTimestampIsNone: u64 = 5;
     const ECurrentTimeNotAboveTimeout: u64 = 6;
     
     const ENotAddressAdditionPhase: u64 = 10;
-    const ENotTimeoutSetupPhase: u64 = 11;
-    const ENotFundingPhase: u64 = 12;
-    const ENotClaimPhase: u64 = 13;
-    const ENotReclaimPhase: u64 = 14;
+    const ENotFundingPhase: u64 = 11;
+    const ENotClaimPhase: u64 = 12;
+    const ENotReclaimPhase: u64 = 13;
 
     friend refund::booster;
 
@@ -52,13 +51,13 @@ module refund::refund {
     /// - `accounting`: A record of accounting metrics related to the refund process, including the total amount refunded, the total amount boosted (for eligible claims made through specific channels like Rinbot), and the current liabilities of the refund pool.
     struct RefundPool has key {
         id: UID,
+        nonce: ID,
         unclaimed: Table<address, u64>,
         base_pool: Pool,
         booster_pool: Pool,
         accounting: Accounting,
         // u8 bit flag corresponding to the state of the refun process
-        // 0 --> Address addition phase
-        // 1 --> Timeout Setup phase
+        // 1 --> Address addition phase
         // 2 --> Funding phase
         // 3 --> Claim phase
         // 4 --> Reclaim phase
@@ -73,13 +72,17 @@ module refund::refund {
         let publisher = sui::package::claim(otw, ctx);
         let sender = sender(ctx);
 
+        let id = object::new(ctx);
+        let nonce = object::uid_to_inner(&id);
+
         let list = RefundPool {
-            id: object::new(ctx),
+            id,
+            nonce,
             unclaimed: table::new(ctx),
             base_pool: pool::new(ctx),
             booster_pool: pool::new(ctx),
             accounting: accounting::new(),
-            phase: 0,
+            phase: 1,
             timeout_ts: none()
         };
 
@@ -87,7 +90,7 @@ module refund::refund {
         transfer::share_object(list);
     }
 
-    // === Phase 0: Setup ===
+    // === Phase 1: Setup ===
 
     /// Adds addresses and corresponding amounts to the refund pool. This endpoint
     /// is reserved to Aldrin, i.e the owner of the `Publisher` object
@@ -129,21 +132,6 @@ module refund::refund {
         vector::destroy_empty(amounts);
     }
 
-    // === Phase 1: Timeout setup ===
-
-    public entry fun set_timeout_ts(
-        pub: &Publisher,
-        pool: &mut RefundPool,
-        timeout_ts: u64,
-        clock: &Clock,
-    ) {
-        assert_timeout_setup_phase(pool);
-        assert_publisher(pub);
-        assert!(timeout_ts > clock::timestamp_ms(clock), EInvalidTimeoutTimestamp);
-
-        option::fill(&mut pool.timeout_ts, timeout_ts);
-    }
-
     // === Phase 2: Funding ===
 
     /// Permissionless endpoint for funding the fund pool with the given SUI coin.
@@ -162,17 +150,9 @@ module refund::refund {
         let total_raised = total_raised_mut(&mut pool.accounting);
 
         let is_overfunded = *total_raised + amount > total_to_refund;
-        if (is_overfunded) {
-            let excess_amount = *total_raised + amount - total_to_refund;
-            let excess = coin::split(&mut coin, excess_amount, ctx);
+        assert!(!is_overfunded, 0);
 
-            transfer::public_transfer(excess, sender(ctx));
-            // TODO: Improve arithmetic
-            *total_raised = total_to_refund;
-        } else {
-            *total_raised = *total_raised + amount;
-        };
-
+        *total_raised = *total_raised + amount;
         balance::join(funds_mut(&mut pool.base_pool), coin::into_balance(coin)); 
     }
     
@@ -266,9 +246,10 @@ module refund::refund {
     
     // === Getters ===
 
+    public fun nonce(pool: &RefundPool): ID { pool.nonce }
     public fun unclaimed(pool: &RefundPool): &Table<address, u64> { &pool.unclaimed }
     public fun base_pool(pool: &RefundPool): &Pool { &pool.base_pool}
-    public fun booster_pool(pool: &RefundPool): &Pool { &pool.base_pool }
+    public fun booster_pool(pool: &RefundPool): &Pool { &pool.booster_pool }
     public fun accounting(pool: &RefundPool): &Accounting { &pool.accounting }
     public fun phase(pool: &RefundPool): u8 { pool.phase }
     public fun timeout_ts(pool: &RefundPool): Option<u64> { pool.timeout_ts }
@@ -296,24 +277,18 @@ module refund::refund {
     public(friend) fun booster_pool_mut(pool: &mut RefundPool): &mut Pool { &mut pool.base_pool }
 
     // === Phase Transitions ===
-
-    public entry fun start_timeout_setup_phase(
-        pub: &Publisher,
-        pool: &mut RefundPool,
-    ) {
-        assert_address_addition_phase(pool);
-        assert_publisher(pub);
-
-        next_phase(pool)
-    }
     
     public entry fun start_funding_phase(
         pub: &Publisher,
         pool: &mut RefundPool,
+        timeout_ts: u64,
+        clock: &Clock,
     ) {
-        assert_timeout_setup_phase(pool);
-        assert!(is_some(&pool.timeout_ts), ETimeoutTimestampIsNone);
         assert_publisher(pub);
+        assert_address_addition_phase(pool);
+        
+        assert!(timeout_ts > clock::timestamp_ms(clock), EInvalidTimeoutTimestamp);
+        option::fill(&mut pool.timeout_ts, timeout_ts);
 
         next_phase(pool)
     }
@@ -333,12 +308,19 @@ module refund::refund {
         pool: &mut RefundPool,
         clock: &Clock,
     ) {
-        assert_claim_phase(pool);
-
         let timeout_ts = option::borrow(&pool.timeout_ts);
         assert!(clock::timestamp_ms(clock) >= *timeout_ts, ECurrentTimeNotAboveTimeout);
 
-        next_phase(pool)
+        if (is_funding_phase(pool)) {
+            let total_to_refund = total_to_refund(&pool.accounting);
+            let total_raised = total_raised(&pool.accounting);
+            assert!(total_raised < total_to_refund, 0);
+            
+        } else {
+            assert_claim_phase(pool);
+        };
+
+        next_phase(pool);
     }
 
     fun next_phase(pool: &mut RefundPool) {
@@ -352,23 +334,32 @@ module refund::refund {
     }
     
     fun assert_address_addition_phase(pool: &RefundPool) {
-        assert!(pool.phase == 0, ENotAddressAdditionPhase);
-    }
-    
-    fun assert_timeout_setup_phase(pool: &RefundPool) {
-        assert!(pool.phase == 1, ENotTimeoutSetupPhase);
+        assert!(is_address_addition_phase(pool), ENotAddressAdditionPhase);
     }
     
     public(friend) fun assert_funding_phase(pool: &RefundPool) {
-        assert!(pool.phase == 2, ENotFundingPhase);
+        assert!(is_funding_phase(pool), ENotFundingPhase);
     }
     
     public(friend) fun assert_claim_phase(pool: &RefundPool) {
-        assert!(pool.phase == 3, ENotClaimPhase);
+        assert!(is_claim_phase(pool), ENotClaimPhase);
     }
     
     public(friend) fun assert_reclaim_phase(pool: &RefundPool) {
-        assert!(pool.phase == 4, ENotReclaimPhase);
+        assert!(is_reclaim_phase(pool), ENotReclaimPhase);
+    }
+
+    fun is_address_addition_phase(pool: &RefundPool): bool {
+        pool.phase == 1
+    }
+    fun is_funding_phase(pool: &RefundPool): bool {
+        pool.phase == 2
+    }
+    fun is_claim_phase(pool: &RefundPool): bool {
+        pool.phase == 3
+    }
+    fun is_reclaim_phase(pool: &RefundPool): bool {
+        pool.phase == 4
     }
 
     // === Test Functions ===
@@ -379,7 +370,28 @@ module refund::refund {
     }
     
     #[test_only]
+    /// Initializes the refund module during contract publishing.
+    /// Sets up the refund pool and transfers ownership from the publisher to the sender.
     public fun init_test(otw: REFUND, ctx: &mut TxContext) {
-        init(otw, ctx)
+        // Init Publisher
+        let publisher = sui::package::claim(otw, ctx);
+        let sender = sender(ctx);
+
+        let id = object::new(ctx);
+        let nonce = object::id_from_address(@0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff);
+
+        let list = RefundPool {
+            id,
+            nonce,
+            unclaimed: table::new(ctx),
+            base_pool: pool::new(ctx),
+            booster_pool: pool::new(ctx),
+            accounting: accounting::new(),
+            phase: 1,
+            timeout_ts: none()
+        };
+
+        transfer::public_transfer(publisher, sender);
+        transfer::share_object(list);
     }
 }
