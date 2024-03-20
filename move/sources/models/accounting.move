@@ -42,4 +42,25 @@ module refund::accounting {
     public(friend) fun total_refunded_mut(acc: &mut Accounting): &mut u64 { &mut acc.total_refunded }
     public(friend) fun total_raised_for_boost_mut(acc: &mut Accounting): &mut u64 { &mut acc.total_raised_for_boost }
     public(friend) fun total_boosted_mut(acc: &mut Accounting): &mut u64 { &mut acc.total_boosted }
+
+    // === Test Functions ===
+
+    #[test_only]
+    public fun destroy_for_testing(pool: Accounting): (u64, u64, u64, u64, u64) {
+        let Accounting {
+            total_to_refund,
+            total_raised,
+            total_refunded,
+            total_raised_for_boost,
+            total_boosted,
+        } = pool;
+
+        (
+            total_to_refund,
+            total_raised,
+            total_refunded,
+            total_raised_for_boost,
+            total_boosted,
+        )
+    }
 }

@@ -28,4 +28,19 @@ module refund::pool {
     
     public(friend) fun funds_mut(pool: &mut Pool): &mut Balance<SUI> { &mut pool.funds }
     public(friend) fun funders_mut(pool: &mut Pool): &mut Table<address, u64> { &mut pool.funders }
+
+    // === Test Functions ===
+
+    #[test_only]
+    public fun destroy_for_testing(pool: Pool): (
+        Balance<SUI>, Table<address, u64>
+    ) {
+        let Pool {
+            funds,
+            funders,
+        } = pool;
+
+
+        (funds, funders)
+    }
 }

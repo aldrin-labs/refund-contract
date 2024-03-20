@@ -8,7 +8,7 @@ module refund::refund {
 	use sui::coin::{Self, Coin};
     use sui::transfer;
     use sui::balance;
-    use sui::object::{Self, UID, ID};
+    use sui::object::{Self, UID};
     use sui::table::{Self, Table};
     use std::vector;
     use sui::package::{Self, Publisher};
@@ -52,7 +52,6 @@ module refund::refund {
     /// - `accounting`: A record of accounting metrics related to the refund process, including the total amount refunded, the total amount boosted (for eligible claims made through specific channels like Rinbot), and the current liabilities of the refund pool.
     struct RefundPool has key {
         id: UID,
-        nonce: ID,
         unclaimed: Table<address, u64>,
         base_pool: Pool,
         booster_pool: Pool,
@@ -73,12 +72,8 @@ module refund::refund {
         let publisher = sui::package::claim(otw, ctx);
         let sender = sender(ctx);
 
-        let id = object::new(ctx);
-        let nonce = object::uid_to_inner(&id);
-
         let list = RefundPool {
-            id,
-            nonce,
+            id: object::new(ctx),
             unclaimed: table::new(ctx),
             base_pool: pool::new(ctx),
             booster_pool: pool::new(ctx),
@@ -223,7 +218,6 @@ module refund::refund {
     
     // === Getters ===
 
-    public fun nonce(pool: &RefundPool): ID { pool.nonce }
     public fun unclaimed(pool: &RefundPool): &Table<address, u64> { &pool.unclaimed }
     public fun base_pool(pool: &RefundPool): &Pool { &pool.base_pool}
     public fun booster_pool(pool: &RefundPool): &Pool { &pool.booster_pool }
@@ -234,6 +228,15 @@ module refund::refund {
     public fun amount_to_claim(pool: &RefundPool, claimer: address): Option<u64> {
         if (table::contains(&pool.unclaimed, claimer)) {
             some(*table::borrow(&pool.unclaimed, claimer))
+        } else {
+            none()
+        }
+    }
+    
+    public fun amount_to_claim_boosted(pool: &RefundPool, claimer: address): Option<u64> {
+        if (table::contains(&pool.unclaimed, claimer)) {
+            let claim_amount = *table::borrow(&pool.unclaimed, claimer);
+            some(claim_amount + div(claim_amount, 2))
         } else {
             none()
         }
@@ -384,6 +387,25 @@ module refund::refund {
     }
     
     #[test_only]
+    public fun destroy_for_testing(pool: RefundPool): (
+        Table<address, u64>, Pool, Pool, Accounting, u8, Option<u64>
+    ) {
+        let RefundPool {
+            id,
+            unclaimed,
+            base_pool,
+            booster_pool,
+            accounting,
+            phase,
+            timeout_ts,
+        } = pool;
+
+        object::delete(id);
+
+        (unclaimed, base_pool, booster_pool, accounting, phase, timeout_ts)
+    }
+
+    #[test_only]
     /// Initializes the refund module during contract publishing.
     /// Sets up the refund pool and transfers ownership from the publisher to the sender.
     public fun init_test(otw: REFUND, ctx: &mut TxContext) {
@@ -391,12 +413,8 @@ module refund::refund {
         let publisher = sui::package::claim(otw, ctx);
         let sender = sender(ctx);
 
-        let id = object::new(ctx);
-        let nonce = object::id_from_address(@0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff);
-
         let list = RefundPool {
-            id,
-            nonce,
+            id: object::new(ctx),
             unclaimed: table::new(ctx),
             base_pool: pool::new(ctx),
             booster_pool: pool::new(ctx),
