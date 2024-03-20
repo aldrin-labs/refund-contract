@@ -1,21 +1,20 @@
 module refund::booster {
+    use std::debug::print;
     use sui::tx_context::{TxContext, sender};
 	use sui::coin::{Self, Coin};
     use sui::transfer;
     use sui::balance;
-    use sui::object;
     use sui::table;
-    use std::vector;
     use sui::package::Publisher;
     use sui::sui::SUI;
     use sui::ed25519;
-    // use sui::address as sui_address;
     
     use refund::refund::{
         Self, RefundPool, claim_refund_,
         accounting, unclaimed, 
         accounting_mut, booster_pool_mut
     };
+    use refund::sig;
     use refund::accounting::{total_raised_for_boost, total_raised_for_boost_mut, current_liabilities, total_boosted_mut};
     use refund::math::{mul, div};
     use refund::table::{Self as refund_table};
@@ -80,32 +79,42 @@ module refund::booster {
         pub: &Publisher,
         pool: &mut RefundPool,
         affected_address: address,
+        affected_address_pubkey: vector<u8>,
         new_address: address,
         signature: vector<u8>,
         ctx: &mut TxContext,
     ) {
+        print(&1);
         refund::assert_publisher(pub);
         assert!(table::contains(unclaimed(pool), affected_address), EInvalidAddress); // TODO: get from assert function
+        print(&2);
         // refund::assert_claim_phase(pool);
         
         // Reconstruct message
-        let pubkey = address_to_bytes(affected_address); // TODO: (Placeholder) this should be the pubkey converted in bytes
-        let affected_address_bytes = address_to_bytes(affected_address);
-        let new_address_bytes = address_to_bytes(new_address);
-
-        let msg = vector::empty();
-        vector::append(&mut msg, affected_address_bytes);
-        vector::append(&mut msg, new_address_bytes);
-        vector::append(&mut msg, object::id_to_bytes(&object::id(pool)));
-
         assert!(
-            ed25519::ed25519_verify(&signature, &pubkey, &msg),
+            sig::public_key_to_sui_address(affected_address_pubkey) == affected_address,
+            0
+        );
+        print(&3);
+
+        let msg = sig::construct_msg(
+            sig::address_to_bytes(affected_address),
+            sig::address_to_bytes(new_address),
+            refund::nonce(pool),
+        );
+
+        print(&4);
+        assert!(
+            ed25519::ed25519_verify(&signature, &affected_address_pubkey, &msg),
             EIncorrectSignature
         );
         let refund_amount = *table::borrow(unclaimed(pool), affected_address);
 
         // Base Refund
+        print(&5);
         claim_refund_(pool, new_address, ctx);
+
+        print(&6);
 
         // Booster Refund
         let boost = div(refund_amount, 2);
@@ -167,9 +176,5 @@ module refund::booster {
     public fun current_liability_boosted(pool: &RefundPool): u64 {
         let current_liabilities = current_liabilities(accounting(pool));
         current_liabilities + div(current_liabilities, 2)
-    }
-
-    public fun address_to_bytes(addr: address): vector<u8> {
-        object::id_to_bytes(&object::id_from_address(addr))
     }
 }
