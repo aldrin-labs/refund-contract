@@ -16,12 +16,12 @@ module refund::booster {
     };
     use refund::sig;
     use refund::accounting::{total_raised_for_boost, total_raised_for_boost_mut, current_liabilities, total_boosted_mut};
-    use refund::math::{mul, div};
+    use refund::math::div;
     use refund::table::{Self as refund_table};
     use refund::pool::{funders_mut, funds_mut};
 
     const EIncorrectSignature: u64 = 0;
-    const EInvalidAddress: u64 = 1;
+    const EPubkeyAddressMismatch: u64 = 1;
 
     // === Phase 2: Funding ===
 
@@ -40,7 +40,7 @@ module refund::booster {
         refund_table::insert_or_add(funders_mut(booster), sender(ctx), amount);
         balance::join(funds_mut(booster), coin::into_balance(coin)); 
     }
-    
+
     public entry fun withdraw_funds(
         pool: &mut RefundPool,
         amount: u64,
@@ -85,13 +85,12 @@ module refund::booster {
         ctx: &mut TxContext,
     ) {
         refund::assert_publisher(pub);
-        assert!(table::contains(unclaimed(pool), affected_address), EInvalidAddress); // TODO: get from assert function
-        // refund::assert_claim_phase(pool);
+        refund::assert_address(pool, affected_address);
         
         // Reconstruct message
         assert!(
             sig::public_key_to_sui_address(affected_address_pubkey) == affected_address,
-            0
+            EPubkeyAddressMismatch
         );
 
         let msg = sig::construct_msg(
@@ -125,40 +124,16 @@ module refund::booster {
 
     // === Phase 4: Reclaim Fund ===
 
-    // TODO: Encapsulate logic in shared function with refund::reclaim_fund
     public entry fun reclaim_fund(
         pool: &mut RefundPool,
         ctx: &mut TxContext,
     ) {
         refund::assert_reclaim_phase(pool);
-        let total_raised = total_raised_for_boost(accounting(pool));
 
+        let total_raised = total_raised_for_boost(accounting(pool));
         let booster = booster_pool_mut(pool);
 
-        let funders = funders_mut(booster);
-        assert!(table::contains(funders, sender(ctx)), 0); // TODO: err code
-        let funding_amount = table::remove(funders, sender(ctx));
-
-        let is_last = table::is_empty(funders);
-        let funds = funds_mut(booster);
-        
-        let reclaim_amount = if (is_last) {
-            balance::value(funds)
-        } else {
-            let leftovers = balance::value(funds);
-
-            // ReclaimAmount = Leftovers * % Share <=>
-            // ReclaimAmount = Leftovers * FundingAmount/TotalRaised
-            // 
-            // We first upscale then downscale
-            div(
-                mul(leftovers, funding_amount),
-                total_raised
-            )
-        };
-
-        let reclaim_funds = coin::from_balance(balance::split(funds, reclaim_amount), ctx);
-        transfer::public_transfer(reclaim_funds, sender(ctx));
+        refund::reclaim_funds_(booster, total_raised, ctx);
     }
 
     // === Gettes and Utils ===

@@ -31,6 +31,7 @@ module refund::refund {
     const EPoolUnderfunded: u64 = 3;
     const EInvalidTimeoutTimestamp: u64 = 4;
     const ECurrentTimeNotAboveTimeout: u64 = 6;
+    const EInvalidFunder: u64 = 7;
     
     const ENotAddressAdditionPhase: u64 = 10;
     const ENotFundingPhase: u64 = 11;
@@ -186,7 +187,7 @@ module refund::refund {
         ctx: &mut TxContext,
     ) {
         let sender = sender(ctx);
-        assert!(table::contains(&pool.unclaimed, sender), EInvalidAddress);
+        assert_address(pool, sender);
 
         transfer::public_transfer(claim_refund_(pool, sender, ctx), sender);
     }
@@ -210,38 +211,14 @@ module refund::refund {
 
     // === Phase 4: Reclaim Fund ===
 
-    public entry fun reclaim_fund(
+    public entry fun reclaim_funds(
         pool: &mut RefundPool,
         ctx: &mut TxContext,
     ) {
         assert_reclaim_phase(pool);
-
-        let funders = funders_mut(&mut pool.base_pool);
-        assert!(table::contains(funders, sender(ctx)), 0); // TODO: err code
-
         let total_raised = total_raised(&pool.accounting);
-        let funding_amount = table::remove(funders, sender(ctx));
 
-        let is_last = table::is_empty(funders);
-        let funds = funds_mut(&mut pool.base_pool);
-        
-        let reclaim_amount = if (is_last) {
-            balance::value(funds)
-        } else {
-            let leftovers = balance::value(funds);
-
-            // ReclaimAmount = Leftovers * % Share <=>
-            // ReclaimAmount = Leftovers * FundingAmount/TotalRaised
-            // 
-            // We first upscale then downscale
-            div(
-                mul(leftovers, funding_amount),
-                total_raised
-            )
-        };
-
-        let reclaim_funds = coin::from_balance(balance::split(funds, reclaim_amount), ctx);
-        transfer::public_transfer(reclaim_funds, sender(ctx));
+        reclaim_funds_(&mut pool.base_pool, total_raised, ctx);
     }
     
     // === Getters ===
@@ -270,11 +247,42 @@ module refund::refund {
     public fun booster_funds(pool: &RefundPool): u64 { balance::value(funds(&pool.booster_pool)) }
     public fun current_liabilities(pool: &RefundPool): u64 { accounting::current_liabilities(&pool.accounting) }
 
-    // === Mutators (Friends) ===
+    // === Friends ===
     
     public(friend) fun unclaimed_mut(pool: &mut RefundPool): &mut Table<address, u64> { &mut pool.unclaimed }
     public(friend) fun accounting_mut(pool: &mut RefundPool): &mut Accounting { &mut pool.accounting }
     public(friend) fun booster_pool_mut(pool: &mut RefundPool): &mut Pool { &mut pool.base_pool }
+
+    public(friend) fun reclaim_funds_(
+        inner_pool: &mut Pool,
+        total_raised: u64,
+        ctx: &mut TxContext,
+    ) {
+        let funders = funders_mut(inner_pool);
+        assert!(table::contains(funders, sender(ctx)), EInvalidFunder);
+        let funding_amount = table::remove(funders, sender(ctx));
+
+        let is_last = table::is_empty(funders);
+        let funds = funds_mut(inner_pool);
+        
+        let reclaim_amount = if (is_last) {
+            balance::value(funds)
+        } else {
+            let leftovers = balance::value(funds);
+
+            // ReclaimAmount = Leftovers * % Share <=>
+            // ReclaimAmount = Leftovers * FundingAmount/TotalRaised
+            // 
+            // We first upscale then downscale
+            div(
+                mul(leftovers, funding_amount),
+                total_raised
+            )
+        };
+
+        let reclaim_funds = coin::from_balance(balance::split(funds, reclaim_amount), ctx);
+        transfer::public_transfer(reclaim_funds, sender(ctx));
+    }
 
     // === Phase Transitions ===
     
@@ -347,6 +355,10 @@ module refund::refund {
     
     public(friend) fun assert_reclaim_phase(pool: &RefundPool) {
         assert!(is_reclaim_phase(pool), ENotReclaimPhase);
+    }
+    
+    public(friend) fun assert_address(pool: &RefundPool, sender: address) {
+        assert!(table::contains(&pool.unclaimed, sender), EInvalidAddress);
     }
 
     fun is_address_addition_phase(pool: &RefundPool): bool {

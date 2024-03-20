@@ -7,7 +7,7 @@ module refund::refund_tests {
     use sui::coin::{Self, Coin};
     use sui::sui::SUI;
     use sui::clock;
-    
+
     use refund::refund::{Self, REFUND, RefundPool};
     use refund::booster;
     use refund::test_utils::{
@@ -23,10 +23,11 @@ module refund::refund_tests {
     const FUNDER_3: address = @0x300;
 
     const FAKE_WALLET: address = @0x99;
+    #[allow(unused_const)]
     const FAKE_PUBLISHER: address = @0x0;
 
     struct FAKE_REFUND has drop {}
-    
+
     #[test]
     fun test_refund_pool_base() {
         let scenario = ts::begin(PUBLISHER);
@@ -70,32 +71,28 @@ module refund::refund_tests {
         );
 
         ts::next_tx(&mut scenario, FUNDER_1);
-
         refund::fund(
             &mut refund_pool,
             coin::mint_for_testing<SUI>(2_000,ctx(&mut scenario)),
             ctx(&mut scenario),
         );
-        
-        ts::next_tx(&mut scenario, FUNDER_2);
 
+        ts::next_tx(&mut scenario, FUNDER_2);
         refund::fund(
             &mut refund_pool,
             coin::mint_for_testing<SUI>(1_000,ctx(&mut scenario)),
             ctx(&mut scenario),
         );
-        
-        ts::next_tx(&mut scenario, FUNDER_3);
 
+        ts::next_tx(&mut scenario, FUNDER_3);
         refund::fund(
             &mut refund_pool,
             coin::mint_for_testing<SUI>(3_000,ctx(&mut scenario)),
             ctx(&mut scenario),
         );
 
-
-        ts::next_tx(&mut scenario, wallet_1(), );
-
+        ts::next_tx(&mut scenario, wallet_1());
+        
         // Permissionless endpoint to transition to claim phase
         refund::start_claim_phase(&mut refund_pool);
         refund::claim_refund(&mut refund_pool, ctx(&mut scenario));
@@ -116,7 +113,7 @@ module refund::refund_tests {
         assert!(coin::value(&coin_1) == 2_000,0);
         assert!(coin::value(&coin_2) == 2_000,0);
         assert!(coin::value(&coin_3) == 2_000,0);
-        
+
         coin::burn_for_testing(coin_1);
         coin::burn_for_testing(coin_2);
         coin::burn_for_testing(coin_3);
