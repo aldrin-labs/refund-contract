@@ -248,7 +248,9 @@ module refund::refund {
     public fun current_liabilities(pool: &RefundPool): u64 { accounting::current_liabilities(&pool.accounting) }
 
     // === Friends ===
-    
+
+    public(friend) fun uid_mut(pool: &mut RefundPool): &mut UID { &mut pool.id }
+
     public(friend) fun unclaimed_mut(pool: &mut RefundPool): &mut Table<address, u64> { &mut pool.unclaimed }
     public(friend) fun accounting_mut(pool: &mut RefundPool): &mut Accounting { &mut pool.accounting }
     public(friend) fun booster_pool_mut(pool: &mut RefundPool): &mut Pool { &mut pool.base_pool }

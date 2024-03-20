@@ -5,23 +5,32 @@ module refund::booster {
     use sui::transfer;
     use sui::balance;
     use sui::table;
+    use sui::dynamic_field as df;
+    use sui::object::{Self, UID};
     use sui::package::Publisher;
     use sui::sui::SUI;
-    use sui::ed25519;
     
     use refund::refund::{
         Self, RefundPool, claim_refund_,
-        accounting, unclaimed, 
+        accounting, unclaimed, uid_mut,
         accounting_mut, booster_pool_mut
     };
-    use refund::sig;
-    use refund::accounting::{total_raised_for_boost, total_raised_for_boost_mut, current_liabilities, total_boosted_mut};
+    use refund::accounting::{
+        total_raised_for_boost, total_raised_for_boost_mut,
+        current_liabilities, total_boosted_mut
+    };
     use refund::math::div;
     use refund::table::{Self as refund_table};
     use refund::pool::{funders_mut, funds_mut};
 
-    const EIncorrectSignature: u64 = 0;
-    const EPubkeyAddressMismatch: u64 = 1;
+    const EAddressRetrievedBoostCap: u64 = 0;
+
+    struct BoostedCapDfKey has copy, store, drop { affected_address: address }
+
+    struct BoostedClaimCap has key {
+        id: UID,
+        new_address: address
+    }
 
     // === Phase 2: Funding ===
 
@@ -51,7 +60,6 @@ module refund::booster {
         let total_raised_for_boost = total_raised_for_boost_mut(accounting_mut(pool));
         *total_raised_for_boost = *total_raised_for_boost - amount;
 
-
         let booster = booster_pool_mut(pool);
         refund_table::remove_or_subtract(funders_mut(booster), sender(ctx), amount);
         let funds = coin::from_balance(balance::split(funds_mut(booster), amount) , ctx);
@@ -60,49 +68,39 @@ module refund::booster {
 
     // === Phase 3: Claim Refund ===
 
-    /// Allows an affected address to claim a boosted refund to a new address.
-    /// The refund amount is increased by a boost calculated as half of the
-    /// original refund amount. The resulting total refund corresponds to 1.5x
-    /// the actual amount lost in the loss envent.
-    /// 
-    /// This endpoint is reserved to Aldrin, i.e. the owner of the `Publisher` object.
-    /// The refund boost is limited to user who refund via the Rinbot account.
-    /// When a user claims the refund with 1.5x boost, Aldrin will call
-    /// `claim_refund_boosted` with the `affected_address` being the user address
-    /// original affected by the loss event, and `new_address` being the associated
-    /// Rinbot account address.
-    /// 
-    /// #### Panics
-    /// - If the publisher is not valid.
-    /// - If the affected address does not exist in the unclaimed refunds list.
-    public entry fun claim_refund_boosted(
+    // called via tx sent from Rinbot address
+    public fun allow_boosted_claim(
         pub: &Publisher,
         pool: &mut RefundPool,
         affected_address: address,
-        affected_address_pubkey: vector<u8>,
         new_address: address,
-        signature: vector<u8>,
-        ctx: &mut TxContext,
+        ctx: &mut TxContext
     ) {
         refund::assert_publisher(pub);
+        refund::assert_claim_phase(pool);
         refund::assert_address(pool, affected_address);
+        assert!(!df::exists_(uid_mut(pool), BoostedCapDfKey { affected_address }), EAddressRetrievedBoostCap);
+
+        let boosted_claim_cap = BoostedClaimCap {
+            id: object::new(ctx),
+            new_address,
+        };
+
+        df::add(uid_mut(pool), BoostedCapDfKey { affected_address }, true);
+        transfer::transfer(boosted_claim_cap, affected_address);
+    }
+
+    public entry fun claim_refund_boosted(
+        cap: BoostedClaimCap,
+        pool: &mut RefundPool,
+        ctx: &mut TxContext,
+    ) {
+        let affected_address = sender(ctx);
+        refund::assert_address(pool, affected_address);
+
+        let BoostedClaimCap { id, new_address } = cap;
+        object::delete(id);
         
-        // Reconstruct message
-        assert!(
-            sig::public_key_to_sui_address(affected_address_pubkey) == affected_address,
-            EPubkeyAddressMismatch
-        );
-
-        let msg = sig::construct_msg(
-            sig::address_to_bytes(affected_address),
-            sig::address_to_bytes(new_address),
-            refund::nonce(pool),
-        );
-
-        assert!(
-            ed25519::ed25519_verify(&signature, &affected_address_pubkey, &msg),
-            EIncorrectSignature
-        );
         let refund_amount = *table::borrow(unclaimed(pool), affected_address);
 
         // Base Refund
