@@ -188,24 +188,24 @@ module refund::refund {
         let sender = sender(ctx);
         assert!(table::contains(&pool.unclaimed, sender), EInvalidAddress);
 
-        claim_refund_(pool, sender, ctx);
+        transfer::public_transfer(claim_refund_(pool, sender, ctx), sender);
     }
     
     public(friend) fun claim_refund_(
         pool: &mut RefundPool,
-        receiver: address,
+        original_address: address,
         ctx: &mut TxContext,
-    ) {
+    ): Coin<SUI> {
         assert_claim_phase(pool);
 
-        let refund_amount = table::remove(&mut pool.unclaimed, receiver);
-        
+        let refund_amount = table::remove(&mut pool.unclaimed, original_address);
+
         let total_refunded = total_refunded_mut(&mut pool.accounting);
         *total_refunded = *total_refunded + refund_amount;
 
         let funds = balance::split(funds_mut(&mut pool.base_pool), refund_amount);
 
-        transfer::public_transfer(coin::from_balance(funds, ctx), receiver);
+        coin::from_balance(funds, ctx)
     }
 
     // === Phase 4: Reclaim Fund ===

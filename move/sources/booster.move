@@ -1,5 +1,5 @@
 module refund::booster {
-    use std::debug::print;
+    // use std::debug::print;
     use sui::tx_context::{TxContext, sender};
 	use sui::coin::{Self, Coin};
     use sui::transfer;
@@ -84,10 +84,8 @@ module refund::booster {
         signature: vector<u8>,
         ctx: &mut TxContext,
     ) {
-        print(&1);
         refund::assert_publisher(pub);
         assert!(table::contains(unclaimed(pool), affected_address), EInvalidAddress); // TODO: get from assert function
-        print(&2);
         // refund::assert_claim_phase(pool);
         
         // Reconstruct message
@@ -95,7 +93,6 @@ module refund::booster {
             sig::public_key_to_sui_address(affected_address_pubkey) == affected_address,
             0
         );
-        print(&3);
 
         let msg = sig::construct_msg(
             sig::address_to_bytes(affected_address),
@@ -103,7 +100,6 @@ module refund::booster {
             refund::nonce(pool),
         );
 
-        print(&4);
         assert!(
             ed25519::ed25519_verify(&signature, &affected_address_pubkey, &msg),
             EIncorrectSignature
@@ -111,10 +107,7 @@ module refund::booster {
         let refund_amount = *table::borrow(unclaimed(pool), affected_address);
 
         // Base Refund
-        print(&5);
-        claim_refund_(pool, new_address, ctx);
-
-        print(&6);
+        let refund = claim_refund_(pool, affected_address, ctx);
 
         // Booster Refund
         let boost = div(refund_amount, 2);
@@ -123,9 +116,11 @@ module refund::booster {
         *total_boosted = *total_boosted + boost;
 
         let booster = booster_pool_mut(pool);
-        let funds = balance::split(funds_mut(booster), boost);
+        let boosted_funds = balance::split(funds_mut(booster), boost);
 
-        transfer::public_transfer(coin::from_balance(funds, ctx), new_address);
+        balance::join(coin::balance_mut(&mut refund), boosted_funds);
+
+        transfer::public_transfer(refund, new_address);
     }
 
     // === Phase 4: Reclaim Fund ===
