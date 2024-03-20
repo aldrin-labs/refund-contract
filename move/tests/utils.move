@@ -2,8 +2,15 @@
 module refund::test_utils {
     use sui::test_scenario::{Self as ts, ctx};
     use sui::package::Publisher;
+    use sui::coin::{Self, Coin};
+    use sui::sui::SUI;
+    use std::option::{Self, Option, is_some, borrow};
+    use sui::table;
+    use sui::balance;
 
-    use refund::refund::RefundPool;
+    use refund::pool;
+    use refund::accounting;
+    use refund::refund::{Self, RefundPool};
     use refund::booster::{Self, BoostedClaimCap};
 
     public fun claim_boosted(
@@ -11,9 +18,15 @@ module refund::test_utils {
         pool: &mut RefundPool,
         affected_address: address,
         new_address: address,
+        amt_check: Option<u64>,
         scenario: &mut ts::Scenario,
     ) {
         ts::next_tx(scenario, publisher());
+        let amt = refund::amount_to_claim_boosted(pool, affected_address);
+
+        if (is_some(&amt_check)) {
+            assert!(amt_check == amt, 0);
+        };
 
         booster::allow_boosted_claim(
             pub,
@@ -30,7 +43,75 @@ module refund::test_utils {
             boost_cap,
             pool,
             ctx(scenario),
-        );    
+        );
+
+        ts::next_tx(scenario, new_address);
+        let funds = ts::take_from_address<Coin<SUI>>(scenario, new_address);
+        assert!(coin::value(&funds) == *borrow(&amt), 0);
+
+        ts::return_to_address(new_address, funds);
+    }
+    
+    public fun claim(
+        pool: &mut RefundPool,
+        affected_address: address,
+        amt_check: Option<u64>,
+        scenario: &mut ts::Scenario,
+    ) {
+        ts::next_tx(scenario, affected_address);
+        let amt = refund::amount_to_claim(pool, affected_address);
+
+        if (is_some(&amt_check)) {
+            assert!(amt_check == amt, 0);
+        };
+
+        refund::claim_refund(
+            pool,
+            ctx(scenario),
+        );
+
+        ts::next_tx(scenario, affected_address);
+        let funds = ts::take_from_address<Coin<SUI>>(scenario, affected_address);
+        assert!(coin::value(&funds) == *borrow(&amt), 0);
+
+        ts::return_to_address(affected_address, funds);
+    }
+
+    public fun destroy_and_check(pool: RefundPool) {
+        let (
+            unclaimed,
+            base_pool,
+            booster_pool,
+            accounting,
+            phase,
+            timeout_ts,
+        ) = refund::destroy_for_testing(pool);
+
+        let (base_funds, base_funders) = pool::destroy_for_testing(base_pool);
+        let (boost_funds, boost_funders) = pool::destroy_for_testing(booster_pool);
+        let (
+            total_to_refund,
+            total_raised,
+            total_refunded,
+            total_raised_for_boost,
+            total_boosted,
+        ) = accounting::destroy_for_testing(accounting);
+
+        option::destroy_some(timeout_ts);
+        table::drop(base_funders);
+        table::drop(boost_funders);
+
+        assert!(table::is_empty(&unclaimed), 0);
+        assert!(balance::value(&base_funds) == 0, 0);
+        assert!(balance::value(&boost_funds) == 0, 0);
+        assert!(total_to_refund == total_raised, 0);
+        assert!(total_refunded == total_raised, 0);
+        assert!(total_raised_for_boost == total_boosted, 0);
+        assert!((phase == 4 || phase == 3), 0);
+
+        table::drop(unclaimed);
+        balance::destroy_for_testing(base_funds);
+        balance::destroy_for_testing(boost_funds);
     }
 
     // === Addresses ===

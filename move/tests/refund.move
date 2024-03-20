@@ -7,6 +7,7 @@ module refund::refund_tests {
     use sui::coin::{Self, Coin};
     use sui::sui::SUI;
     use sui::clock;
+    use std::option::{some, none};
 
     use refund::refund::{Self, REFUND, RefundPool};
     use refund::booster;
@@ -92,30 +93,12 @@ module refund::refund_tests {
         
         // Permissionless endpoint to transition to claim phase
         refund::start_claim_phase(&mut refund_pool);
-        refund::claim_refund(&mut refund_pool, ctx(&mut scenario));
+     
+        test_utils::claim(&mut refund_pool, wallet_1(), some(2_000), &mut scenario);
+        test_utils::claim(&mut refund_pool, wallet_2(), some(2_000), &mut scenario);
+        test_utils::claim(&mut refund_pool, wallet_3(), some(2_000), &mut scenario);
 
-        ts::next_tx(&mut scenario, wallet_2());
-        refund::claim_refund(&mut refund_pool, ctx(&mut scenario));
-
-        ts::next_tx(&mut scenario, wallet_3());
-        refund::claim_refund(&mut refund_pool, ctx(&mut scenario));
-
-        // Wrap up testing 
-        ts::next_tx(&mut scenario, publisher());
-
-        let coin_1 = ts::take_from_address<Coin<SUI>>(&scenario, wallet_1());
-        let coin_2 = ts::take_from_address<Coin<SUI>>(&scenario, wallet_2());
-        let coin_3 = ts::take_from_address<Coin<SUI>>(&scenario, wallet_3());
-
-        assert!(coin::value(&coin_1) == 2_000,0);
-        assert!(coin::value(&coin_2) == 2_000,0);
-        assert!(coin::value(&coin_3) == 2_000,0);
-
-        coin::burn_for_testing(coin_1);
-        coin::burn_for_testing(coin_2);
-        coin::burn_for_testing(coin_3);
-
-        ts::return_shared(refund_pool);
+        test_utils::destroy_and_check(refund_pool);
         ts::return_to_address(publisher(), pub);
         clock::destroy_for_testing(clock);
         ts::end(scenario);
@@ -199,6 +182,7 @@ module refund::refund_tests {
             &mut refund_pool,
             wallet_1(),
             rinbot_1(),
+            some(3_000),
             &mut scenario,
         );
 
@@ -207,6 +191,7 @@ module refund::refund_tests {
             &mut refund_pool,
             wallet_2(),
             rinbot_2(),
+            some(3_000),
             &mut scenario,
         );
 
@@ -215,27 +200,13 @@ module refund::refund_tests {
             &mut refund_pool,
             wallet_3(),
             rinbot_3(),
+            some(3_000),
             &mut scenario,
         );
 
-        // Wrap up testing
-
-        ts::next_tx(&mut scenario, publisher());
-
         // TODO: check that base pool is empty, and that reclaimed boosted funds values are correct
-        let coin_1 = ts::take_from_address<Coin<SUI>>(&scenario, rinbot_1());
-        let coin_2 = ts::take_from_address<Coin<SUI>>(&scenario, rinbot_2());
-        let coin_3 = ts::take_from_address<Coin<SUI>>(&scenario, rinbot_3());
-        
-        assert!(coin::value(&coin_1) == 3_000,0);
-        assert!(coin::value(&coin_2) == 3_000,0);
-        assert!(coin::value(&coin_3) == 3_000,0);
-        
-        coin::burn_for_testing(coin_1);
-        coin::burn_for_testing(coin_2);
-        coin::burn_for_testing(coin_3);
 
-        ts::return_shared(refund_pool);
+        test_utils::destroy_and_check(refund_pool);
         ts::return_to_address(publisher(), pub);
         clock::destroy_for_testing(clock);
         ts::end(scenario);
@@ -299,10 +270,11 @@ module refund::refund_tests {
             &mut refund_pool,
             wallet_1(),
             rinbot_1(),
+            none(),
             &mut scenario,
         );
 
-        ts::return_shared(refund_pool);
+        test_utils::destroy_and_check(refund_pool);
         ts::return_to_address(publisher(), pub);
         transfer::public_transfer(fake_pub, wallet_1());
         clock::destroy_for_testing(clock);
@@ -391,7 +363,7 @@ module refund::refund_tests {
         
         coin::burn_for_testing(coin_1);
 
-        ts::return_shared(refund_pool);
+        test_utils::destroy_and_check(refund_pool);
         ts::return_to_address(publisher(), pub);
         clock::destroy_for_testing(clock);
         ts::end(scenario);
