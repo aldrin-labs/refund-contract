@@ -11,26 +11,23 @@ module refund::refund_tests {
     use refund::refund::{Self, REFUND, RefundPool};
     use refund::booster;
     use refund::test_utils::{
-        wallet_1, pubkey_1, rinbot_1, sig_1,
-        wallet_2, pubkey_2, rinbot_2, sig_2,
-        wallet_3, pubkey_3, rinbot_3, sig_3,
+        Self, publisher,
+        wallet_1, rinbot_1,
+        wallet_2, rinbot_2,
+        wallet_3, rinbot_3,
     };
-
-    const PUBLISHER: address = @0x1000;
 
     const FUNDER_1: address = @0x100;
     const FUNDER_2: address = @0x200;
     const FUNDER_3: address = @0x300;
 
     const FAKE_WALLET: address = @0x99;
-    #[allow(unused_const)]
-    const FAKE_PUBLISHER: address = @0x0;
 
     struct FAKE_REFUND has drop {}
 
     #[test]
     fun test_refund_pool_base() {
-        let scenario = ts::begin(PUBLISHER);
+        let scenario = ts::begin(publisher());
 
         // Act: Initialize the refund pool
         let otw = refund::get_otw_for_testing();
@@ -39,9 +36,9 @@ module refund::refund_tests {
         // Assert: Verify initialization logic such as checking for a non-empty RefundPool, correct `id`, and initial `accounting` values.
         // This might include checking the `unclaimed` table is empty, `funds` are zero, etc.
         // Assertions here will depend on functions or methods provided by the test framework to inspect the state.
-        ts::next_tx(&mut scenario, PUBLISHER);
+        ts::next_tx(&mut scenario, publisher());
 
-        let pub = ts::take_from_address<Publisher>(&scenario, PUBLISHER);
+        let pub = ts::take_from_address<Publisher>(&scenario, publisher());
         assert!(package::from_package<REFUND>(&pub), 0);
 
         let refund_pool = ts::take_shared<RefundPool>(&scenario);
@@ -54,7 +51,7 @@ module refund::refund_tests {
             vector[2_000, 2_000, 2_000],
         );
 
-        ts::next_tx(&mut scenario, PUBLISHER);
+        ts::next_tx(&mut scenario, publisher());
 
         let clock = clock::create_for_testing(ctx(&mut scenario));
     
@@ -104,7 +101,7 @@ module refund::refund_tests {
         refund::claim_refund(&mut refund_pool, ctx(&mut scenario));
 
         // Wrap up testing 
-        ts::next_tx(&mut scenario, PUBLISHER);
+        ts::next_tx(&mut scenario, publisher());
 
         let coin_1 = ts::take_from_address<Coin<SUI>>(&scenario, wallet_1());
         let coin_2 = ts::take_from_address<Coin<SUI>>(&scenario, wallet_2());
@@ -119,14 +116,14 @@ module refund::refund_tests {
         coin::burn_for_testing(coin_3);
 
         ts::return_shared(refund_pool);
-        ts::return_to_address(PUBLISHER, pub);
+        ts::return_to_address(publisher(), pub);
         clock::destroy_for_testing(clock);
         ts::end(scenario);
     }
     
     #[test]
     fun test_refund_pool_boosted() {
-        let scenario = ts::begin(PUBLISHER);
+        let scenario = ts::begin(publisher());
 
         // Act: Initialize the refund pool
         let otw = refund::get_otw_for_testing();
@@ -135,9 +132,9 @@ module refund::refund_tests {
         // Assert: Verify initialization logic such as checking for a non-empty RefundPool, correct `id`, and initial `accounting` values.
         // This might include checking the `unclaimed` table is empty, `funds` are zero, etc.
         // Assertions here will depend on functions or methods provided by the test framework to inspect the state.
-        ts::next_tx(&mut scenario, PUBLISHER);
+        ts::next_tx(&mut scenario, publisher());
 
-        let pub = ts::take_from_address<Publisher>(&scenario, PUBLISHER);
+        let pub = ts::take_from_address<Publisher>(&scenario, publisher());
         assert!(package::from_package<REFUND>(&pub), 0);
 
         let refund_pool = ts::take_shared<RefundPool>(&scenario);
@@ -150,7 +147,7 @@ module refund::refund_tests {
             vector[2_000, 2_000, 2_000],
         );
 
-        ts::next_tx(&mut scenario, PUBLISHER);
+        ts::next_tx(&mut scenario, publisher());
         let clock = clock::create_for_testing(ctx(&mut scenario));
     
         // The community agrees on a timeout timestamp, which reflects the point
@@ -193,43 +190,37 @@ module refund::refund_tests {
             ctx(&mut scenario),
         );
 
-        ts::next_tx(&mut scenario, PUBLISHER);
+        ts::next_tx(&mut scenario, publisher());
 
         // Permissionless endpoint to transition to claim phase
         refund::start_claim_phase(&mut refund_pool);
-        booster::claim_refund_boosted(
+        test_utils::claim_boosted(
             &pub,
             &mut refund_pool,
             wallet_1(),
-            pubkey_1(),
             rinbot_1(),
-            sig_1(),
-            ctx(&mut scenario),
+            &mut scenario,
         );
 
-        booster::claim_refund_boosted(
+        test_utils::claim_boosted(
             &pub,
             &mut refund_pool,
             wallet_2(),
-            pubkey_2(),
             rinbot_2(),
-            sig_2(),
-            ctx(&mut scenario),
+            &mut scenario,
         );
 
-        booster::claim_refund_boosted(
+        test_utils::claim_boosted(
             &pub,
             &mut refund_pool,
             wallet_3(),
-            pubkey_3(),
             rinbot_3(),
-            sig_3(),
-            ctx(&mut scenario),
+            &mut scenario,
         );
 
         // Wrap up testing
 
-        ts::next_tx(&mut scenario, PUBLISHER);
+        ts::next_tx(&mut scenario, publisher());
 
         // TODO: check that base pool is empty, and that reclaimed boosted funds values are correct
         let coin_1 = ts::take_from_address<Coin<SUI>>(&scenario, rinbot_1());
@@ -245,7 +236,7 @@ module refund::refund_tests {
         coin::burn_for_testing(coin_3);
 
         ts::return_shared(refund_pool);
-        ts::return_to_address(PUBLISHER, pub);
+        ts::return_to_address(publisher(), pub);
         clock::destroy_for_testing(clock);
         ts::end(scenario);
     }
@@ -254,7 +245,7 @@ module refund::refund_tests {
     #[test]
     #[expected_failure(abort_code = refund::refund::EInvalidPublisher)]
     fun test_fail_fake_pub_boost() {
-        let scenario = ts::begin(PUBLISHER);
+        let scenario = ts::begin(publisher());
         let clock = clock::create_for_testing(ctx(&mut scenario));
 
         // Act: Initialize the refund pool
@@ -264,9 +255,9 @@ module refund::refund_tests {
         // Assert: Verify initialization logic such as checking for a non-empty RefundPool, correct `id`, and initial `accounting` values.
         // This might include checking the `unclaimed` table is empty, `funds` are zero, etc.
         // Assertions here will depend on functions or methods provided by the test framework to inspect the state.
-        ts::next_tx(&mut scenario, PUBLISHER);
+        ts::next_tx(&mut scenario, publisher());
 
-        let pub = ts::take_from_address<Publisher>(&scenario, PUBLISHER);
+        let pub = ts::take_from_address<Publisher>(&scenario, publisher());
         assert!(package::from_package<REFUND>(&pub), 0);
 
         let refund_pool = ts::take_shared<RefundPool>(&scenario);
@@ -278,7 +269,7 @@ module refund::refund_tests {
             vector[2_000, 2_000, 2_000],
         );
 
-        ts::next_tx(&mut scenario, PUBLISHER);
+        ts::next_tx(&mut scenario, publisher());
         refund::start_funding_phase(
             &pub,
             &mut refund_pool,
@@ -303,85 +294,17 @@ module refund::refund_tests {
 
         let fake_pub = package::test_claim<FAKE_REFUND>(FAKE_REFUND {}, ctx(&mut scenario));
 
-        booster::claim_refund_boosted(
+        test_utils::claim_boosted(
             &fake_pub,
             &mut refund_pool,
             wallet_1(),
-            pubkey_1(),
             rinbot_1(),
-            sig_1(),
-            ctx(&mut scenario),
+            &mut scenario,
         );
 
         ts::return_shared(refund_pool);
-        ts::return_to_address(PUBLISHER, pub);
+        ts::return_to_address(publisher(), pub);
         transfer::public_transfer(fake_pub, wallet_1());
-        clock::destroy_for_testing(clock);
-        ts::end(scenario);
-    }
-    
-    #[test]
-    #[expected_failure(abort_code = refund::booster::EIncorrectSignature)]
-    fun test_fail_fake_sig_boost() {
-        let scenario = ts::begin(PUBLISHER);
-        let clock = clock::create_for_testing(ctx(&mut scenario));
-
-        // Act: Initialize the refund pool
-        let otw = refund::get_otw_for_testing();
-        refund::init_test(otw, ctx(&mut scenario));
-
-        // Assert: Verify initialization logic such as checking for a non-empty RefundPool, correct `id`, and initial `accounting` values.
-        // This might include checking the `unclaimed` table is empty, `funds` are zero, etc.
-        // Assertions here will depend on functions or methods provided by the test framework to inspect the state.
-        ts::next_tx(&mut scenario, PUBLISHER);
-
-        let pub = ts::take_from_address<Publisher>(&scenario, PUBLISHER);
-        assert!(package::from_package<REFUND>(&pub), 0);
-
-        let refund_pool = ts::take_shared<RefundPool>(&scenario);
-
-        refund::add_addresses(
-            &pub,
-            &mut refund_pool,
-            vector[wallet_1(), wallet_2(), wallet_3()],
-            vector[2_000, 2_000, 2_000],
-        );
-
-        ts::next_tx(&mut scenario, PUBLISHER);
-        refund::start_funding_phase(
-            &pub,
-            &mut refund_pool,
-            1717196400, // Fri May 31 2024 23:00:00 GMT+0000
-            &clock
-        );
-        
-        ts::next_tx(&mut scenario, FUNDER_1);
-        refund::fund(
-            &mut refund_pool,
-            coin::mint_for_testing<SUI>(6_000,ctx(&mut scenario)),
-            ctx(&mut scenario),
-        );
-
-        booster::fund(
-            &mut refund_pool,
-            coin::mint_for_testing<SUI>(3_000,ctx(&mut scenario)),
-            ctx(&mut scenario),
-        );
-        
-        ts::next_tx(&mut scenario, wallet_1());
-
-        booster::claim_refund_boosted(
-            &pub,
-            &mut refund_pool,
-            wallet_1(),
-            pubkey_1(),
-            rinbot_1(),
-            sig_2(),
-            ctx(&mut scenario),
-        );
-
-        ts::return_shared(refund_pool);
-        ts::return_to_address(PUBLISHER, pub);
         clock::destroy_for_testing(clock);
         ts::end(scenario);
     }
@@ -389,7 +312,7 @@ module refund::refund_tests {
     #[test]
     #[expected_failure(abort_code = refund::refund::EInvalidAddress)]
     fun test_fail_fake_wallet() {
-        let scenario = ts::begin(PUBLISHER);
+        let scenario = ts::begin(publisher());
 
         // Act: Initialize the refund pool
         let otw = refund::get_otw_for_testing();
@@ -398,9 +321,9 @@ module refund::refund_tests {
         // Assert: Verify initialization logic such as checking for a non-empty RefundPool, correct `id`, and initial `accounting` values.
         // This might include checking the `unclaimed` table is empty, `funds` are zero, etc.
         // Assertions here will depend on functions or methods provided by the test framework to inspect the state.
-        ts::next_tx(&mut scenario, PUBLISHER);
+        ts::next_tx(&mut scenario, publisher());
 
-        let pub = ts::take_from_address<Publisher>(&scenario, PUBLISHER);
+        let pub = ts::take_from_address<Publisher>(&scenario, publisher());
         assert!(package::from_package<REFUND>(&pub), 0);
 
         let refund_pool = ts::take_shared<RefundPool>(&scenario);
@@ -413,7 +336,7 @@ module refund::refund_tests {
             vector[2_000, 2_000, 2_000],
         );
 
-        ts::next_tx(&mut scenario, PUBLISHER);
+        ts::next_tx(&mut scenario, publisher());
 
         let clock = clock::create_for_testing(ctx(&mut scenario));
     
@@ -460,7 +383,7 @@ module refund::refund_tests {
         refund::start_claim_phase(&mut refund_pool);
         refund::claim_refund(&mut refund_pool, ctx(&mut scenario));
         // Wrap up testing 
-        ts::next_tx(&mut scenario, PUBLISHER);
+        ts::next_tx(&mut scenario, publisher());
 
         let coin_1 = ts::take_from_address<Coin<SUI>>(&scenario, wallet_1());
 
@@ -469,7 +392,7 @@ module refund::refund_tests {
         coin::burn_for_testing(coin_1);
 
         ts::return_shared(refund_pool);
-        ts::return_to_address(PUBLISHER, pub);
+        ts::return_to_address(publisher(), pub);
         clock::destroy_for_testing(clock);
         ts::end(scenario);
     }
