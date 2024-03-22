@@ -13,6 +13,7 @@
     "typescript": "^5.4.2"
   },
   "dependencies": {
+    "@mysten/sui.js": "^0.51.0",
     "blakejs": "^1.2.1",
     "tweetnacl": "^1.0.3",
     "tweetnacl-util": "^0.15.1"
