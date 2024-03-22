@@ -20,9 +20,9 @@ module refund::refund {
     use refund::pool::{Self, Pool, funds, funders_mut, funds_mut};
     use refund::table::{Self as refund_table};
     use refund::accounting::{
-        Self, Accounting,
-        total_to_refund, total_raised, total_refunded, total_boosted,
-        total_to_refund_mut, total_raised_mut, total_refunded_mut
+        Self, Accounting, total_unclaimed,
+        total_to_refund, total_raised, total_claimed, total_boosted,
+        total_to_refund_mut, total_raised_mut, total_claimed_mut
     };
 
     const EInvalidPublisher: u64 = 0;
@@ -180,8 +180,8 @@ module refund::refund {
 
         let refund_amount = table::remove(&mut pool.unclaimed, original_address);
 
-        let total_refunded = total_refunded_mut(&mut pool.accounting);
-        *total_refunded = *total_refunded + refund_amount;
+        let total_claimed = total_claimed_mut(&mut pool.accounting);
+        *total_claimed = *total_claimed + refund_amount;
 
         let funds = balance::split(funds_mut(&mut pool.base_pool), refund_amount);
 
@@ -197,7 +197,40 @@ module refund::refund {
         assert_reclaim_phase(pool);
         let total_raised = total_raised(&pool.accounting);
 
-        reclaim_funds_(&mut pool.base_pool, total_raised, ctx);
+        reclaim_funds_(
+            &mut pool.base_pool,
+            total_raised,
+            total_unclaimed(&pool.accounting),
+            ctx
+        );
+    }
+
+    // === Delete ===
+
+    public entry fun delete(
+        pool: RefundPool,
+    ) {
+        assert_reclaim_phase(&pool);
+        assert!(balance::value(funds(&pool.base_pool)) == 0, 0);
+        assert!(balance::value(funds(&pool.booster_pool)) == 0, 0);
+
+        let RefundPool {
+            id, // : UID,
+            unclaimed, // : Table<address, u64>,
+            base_pool, // : Pool,
+            booster_pool, // : Pool,
+            accounting, // : Accounting,
+            phase: _, // : u8,
+            timeout_ts, // : Option<u64>,
+        } = pool;
+
+        object::delete(id);
+        table::drop(unclaimed);
+        pool::delete(base_pool);
+        pool::delete(booster_pool);
+        accounting::drop(accounting);
+        option::destroy_some(timeout_ts);
+
     }
     
     // === Getters ===
@@ -228,7 +261,7 @@ module refund::refund {
     
     public fun get_total_to_refund(pool: &RefundPool): u64 { total_to_refund(&pool.accounting) }
     public fun get_total_raised(pool: &RefundPool): u64 { total_raised(&pool.accounting) }
-    public fun get_total_refunded(pool: &RefundPool): u64 { total_refunded(&pool.accounting) }
+    public fun get_total_claimed(pool: &RefundPool): u64 { total_claimed(&pool.accounting) }
     public fun get_total_boosted(pool: &RefundPool): u64 { total_boosted(&pool.accounting) }
     public fun base_funds(pool: &RefundPool): u64 { balance::value(funds(&pool.base_pool)) }
     public fun booster_funds(pool: &RefundPool): u64 { balance::value(funds(&pool.booster_pool)) }
@@ -245,6 +278,7 @@ module refund::refund {
     public(friend) fun reclaim_funds_(
         inner_pool: &mut Pool,
         total_raised: u64,
+        total_unclaimed: u64,
         ctx: &mut TxContext,
     ) {
         let funders = funders_mut(inner_pool);
@@ -257,14 +291,12 @@ module refund::refund {
         let reclaim_amount = if (is_last) {
             balance::value(funds)
         } else {
-            let leftovers = balance::value(funds);
-
             // ReclaimAmount = Leftovers * % Share <=>
             // ReclaimAmount = Leftovers * FundingAmount/TotalRaised
             // 
             // We first upscale then downscale
             div(
-                mul(leftovers, funding_amount),
+                mul(total_unclaimed, funding_amount),
                 total_raised
             )
         };

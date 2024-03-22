@@ -18,6 +18,16 @@ module refund::pool {
             funders: table::new(ctx),
         }
     }
+    
+    public(friend) fun delete(pool: Pool) {
+        let Pool {
+            funds,
+            funders,
+        } = pool;
+
+        balance::destroy_zero(funds);
+        table::drop(funders);
+    }
 
     // === Getters ===
     

@@ -11,7 +11,7 @@ module refund::accounting {
     struct Accounting has store {
         total_to_refund: u64,
         total_raised: u64,
-        total_refunded: u64,
+        total_claimed: u64,
         total_raised_for_boost: u64,
         total_boosted: u64,
     }
@@ -20,26 +20,38 @@ module refund::accounting {
         Accounting {
             total_to_refund: 0,
             total_raised: 0,
-            total_refunded: 0,
+            total_claimed: 0,
             total_raised_for_boost: 0,
             total_boosted: 0,
         }
+    }
+    
+    public(friend) fun drop(acc: Accounting) {
+        let Accounting {
+            total_to_refund: _,
+            total_raised: _,
+            total_claimed: _,
+            total_raised_for_boost: _,
+            total_boosted: _,
+        } = acc;
     }
 
     // === Getters ===
     
     public fun total_to_refund(acc: &Accounting): u64 { acc.total_to_refund }
     public fun total_raised(acc: &Accounting): u64 { acc.total_raised }
-    public fun total_refunded(acc: &Accounting): u64 { acc.total_refunded }
+    public fun total_claimed(acc: &Accounting): u64 { acc.total_claimed }
     public fun total_raised_for_boost(acc: &Accounting): u64 { acc.total_raised_for_boost }
     public fun total_boosted(acc: &Accounting): u64 { acc.total_boosted }
-    public fun current_liabilities(acc: &Accounting): u64 { acc.total_to_refund - acc.total_refunded }
+    public fun current_liabilities(acc: &Accounting): u64 { acc.total_to_refund - acc.total_claimed }
+    public fun total_unclaimed(acc: &Accounting): u64 { acc.total_raised - acc.total_claimed }
+    public fun total_unclaimed_boosted(acc: &Accounting): u64 { acc.total_raised_for_boost - acc.total_boosted }
 
     // === Mutators (Friends) ===
 
     public(friend) fun total_to_refund_mut(acc: &mut Accounting): &mut u64 { &mut acc.total_to_refund }
     public(friend) fun total_raised_mut(acc: &mut Accounting): &mut u64 { &mut acc.total_raised }
-    public(friend) fun total_refunded_mut(acc: &mut Accounting): &mut u64 { &mut acc.total_refunded }
+    public(friend) fun total_claimed_mut(acc: &mut Accounting): &mut u64 { &mut acc.total_claimed }
     public(friend) fun total_raised_for_boost_mut(acc: &mut Accounting): &mut u64 { &mut acc.total_raised_for_boost }
     public(friend) fun total_boosted_mut(acc: &mut Accounting): &mut u64 { &mut acc.total_boosted }
 
@@ -50,7 +62,7 @@ module refund::accounting {
         let Accounting {
             total_to_refund,
             total_raised,
-            total_refunded,
+            total_claimed,
             total_raised_for_boost,
             total_boosted,
         } = pool;
@@ -58,7 +70,7 @@ module refund::accounting {
         (
             total_to_refund,
             total_raised,
-            total_refunded,
+            total_claimed,
             total_raised_for_boost,
             total_boosted,
         )

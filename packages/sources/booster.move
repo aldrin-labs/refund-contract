@@ -17,7 +17,7 @@ module refund::booster {
     };
     use refund::accounting::{
         total_raised_for_boost, total_raised_for_boost_mut,
-        current_liabilities, total_boosted_mut
+        current_liabilities, total_boosted_mut, total_unclaimed_boosted
     };
     use refund::math::div;
     use refund::table::{Self as refund_table};
@@ -113,9 +113,15 @@ module refund::booster {
         refund::assert_reclaim_phase(pool);
 
         let total_raised = total_raised_for_boost(accounting(pool));
-        let booster = booster_pool_mut(pool);
+        let total_unclaimed = total_unclaimed_boosted(accounting(pool));
+        let booster_pool = booster_pool_mut(pool);
 
-        refund::reclaim_funds_(booster, total_raised, ctx);
+        refund::reclaim_funds_(
+            booster_pool,
+            total_raised,
+            total_unclaimed,
+            ctx
+        );
     }
 
     // === Gettes and Utils ===
