@@ -151,22 +151,6 @@ module refund::refund {
         *total_raised = *total_raised + amount;
         balance::join(funds_mut(&mut pool.base_pool), coin::into_balance(coin)); 
     }
-    
-    public entry fun withdraw_funds(
-        pool: &mut RefundPool,
-        amount: u64,
-        ctx: &mut TxContext,
-    ) {
-        assert_funding_phase(pool);
-
-        refund_table::remove_or_subtract(funders_mut(&mut pool.base_pool), sender(ctx), amount);
-
-        let total_raised = total_raised_mut(&mut pool.accounting);
-        *total_raised = *total_raised - amount;
-
-        let funds = coin::from_balance(balance::split(funds_mut(&mut pool.base_pool), amount) , ctx);
-        transfer::public_transfer(funds, sender(ctx));
-    }
 
     // === Phase 3: Claim Refund ===
 

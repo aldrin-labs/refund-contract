@@ -50,22 +50,6 @@ module refund::booster {
         balance::join(funds_mut(booster), coin::into_balance(coin)); 
     }
 
-    public entry fun withdraw_funds(
-        pool: &mut RefundPool,
-        amount: u64,
-        ctx: &mut TxContext,
-    ) {
-        refund::assert_funding_phase(pool);
-
-        let total_raised_for_boost = total_raised_for_boost_mut(accounting_mut(pool));
-        *total_raised_for_boost = *total_raised_for_boost - amount;
-
-        let booster = booster_pool_mut(pool);
-        refund_table::remove_or_subtract(funders_mut(booster), sender(ctx), amount);
-        let funds = coin::from_balance(balance::split(funds_mut(booster), amount) , ctx);
-        transfer::public_transfer(funds, sender(ctx));
-    }
-
     // === Phase 3: Claim Refund ===
 
     // called via tx sent from Rinbot address
