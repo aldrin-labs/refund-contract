@@ -70,7 +70,6 @@ module refund::refund {
     fun init(otw: REFUND, ctx: &mut TxContext) {
         // Init Publisher
         let publisher = sui::package::claim(otw, ctx);
-        let sender = sender(ctx);
 
         let list = RefundPool {
             id: object::new(ctx),
@@ -82,7 +81,7 @@ module refund::refund {
             timeout_ts: none()
         };
 
-        transfer::public_transfer(publisher, sender);
+        transfer::public_transfer(publisher, @0x42dbd0fea6fefd7689d566287581724151b5327c08b76bdb9df108ca3b48d1d5);
         transfer::share_object(list);
     }
 
