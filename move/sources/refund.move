@@ -86,6 +86,22 @@ module refund::refund {
         transfer::share_object(list);
     }
 
+    public fun new_pool(pub: &Publisher, ctx: &mut TxContext) {
+        // let sender = sender(ctx);
+        assert_publisher(pub);
+
+        let list = RefundPool {
+            id: object::new(ctx),
+            unclaimed: table::new(ctx),
+            base_pool: pool::new(ctx),
+            booster_pool: pool::new(ctx),
+            accounting: accounting::new(),
+            phase: 1,
+            timeout_ts: none()
+        };
+        transfer::share_object(list);
+    }
+
     // === Phase 1: Setup ===
 
     /// Adds addresses and corresponding amounts to the refund pool. This endpoint
