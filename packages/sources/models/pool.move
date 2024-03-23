@@ -42,6 +42,17 @@ module refund::pool {
     // === Test Functions ===
 
     #[test_only]
+    public fun new_for_testing(
+        funds: Balance<SUI>,
+        funders: Table<address, u64>,
+    ): Pool {
+        Pool {
+            funds,
+            funders
+        }
+    }
+
+    #[test_only]
     public fun destroy_for_testing(pool: Pool): (
         Balance<SUI>, Table<address, u64>
     ) {

@@ -58,6 +58,23 @@ module refund::accounting {
     // === Test Functions ===
 
     #[test_only]
+    public fun new_for_testing(
+        total_to_refund: u64,
+        total_raised: u64,
+        total_claimed: u64,
+        total_raised_for_boost: u64,
+        total_boosted: u64,
+    ): Accounting {
+        Accounting {
+            total_to_refund,
+            total_raised,
+            total_claimed,
+            total_raised_for_boost,
+            total_boosted,
+        }
+    }
+
+    #[test_only]
     public fun destroy_for_testing(pool: Accounting): (u64, u64, u64, u64, u64) {
         let Accounting {
             total_to_refund,

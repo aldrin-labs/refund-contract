@@ -4,14 +4,20 @@ module refund::test_utils {
     use sui::package::Publisher;
     use sui::coin::{Self, Coin};
     use sui::sui::SUI;
-    use std::option::{Self, Option, is_some, borrow};
-    use sui::table;
+    use std::option::{Self, Option, is_some, borrow, some};
+    use sui::table::{Self, Table};
     use sui::balance;
+    use sui::tx_context::TxContext;
+    use std::vector;
 
-    use refund::pool;
-    use refund::accounting;
+    use refund::pool::{Self, Pool};
+    use refund::accounting::{Self, Accounting};
     use refund::refund::{Self, RefundPool};
     use refund::booster::{Self, BoostedClaimCap};
+
+    const FUNDER_1: address = @0x100;
+    const FUNDER_2: address = @0x200;
+    const FUNDER_3: address = @0x300;
 
     public fun claim_boosted(
         pub: &Publisher,
@@ -112,6 +118,86 @@ module refund::test_utils {
         table::drop(unclaimed);
         balance::destroy_for_testing(base_funds);
         balance::destroy_for_testing(boost_funds);
+    }
+
+    public fun create_default_phase_4(
+        ctx: &mut TxContext
+    ): RefundPool {
+        refund::new_for_testing(
+            default_unclaimed(ctx),
+            default_base_pool(ctx),
+            default_boost_pool(ctx),
+            default_accounting(),
+            4,
+            some(1706745601), // Thu Feb 01 2024 00:00:01 GMT+0000
+            ctx
+        )
+    }
+
+    public fun default_accounting(): Accounting {
+        accounting::new_for_testing(
+            6_000, // total_to_refund
+            6_000, // total_raised
+            3_000, // total_claimed
+            3_000, // total_raised_for_boost
+            1_500, // total_boosted
+        )
+    }
+
+    public fun default_unclaimed(ctx: &mut TxContext): Table<address, u64> {
+        let addresses = vector[wallet_1(), wallet_2(), wallet_3()];
+        let amounts = vector[2_000, 2_000, 2_000];
+
+        new_table(addresses, amounts, ctx)
+    }
+    
+    public fun default_base_pool(ctx: &mut TxContext): Pool {
+        let addresses = vector[FUNDER_1, FUNDER_2, FUNDER_3];
+        let amounts = vector[2_000, 1_000, 3_000];
+
+        let funders = new_table(addresses, amounts, ctx);
+
+        pool::new_for_testing(
+            balance::create_for_testing<SUI>(3_000), funders
+        )
+    }
+    
+    public fun default_boost_pool(ctx: &mut TxContext): Pool {
+        let addresses = vector[FUNDER_1, FUNDER_2, FUNDER_3];
+        let amounts = vector[1_000, 500, 1_500];
+
+        let funders = new_table(addresses, amounts, ctx);
+
+        pool::new_for_testing(
+            balance::create_for_testing<SUI>(1_500), funders
+        )
+    }
+    
+    public fun new_table(
+        addresses: vector<address>,
+        amounts: vector<u64>,
+        ctx: &mut TxContext
+    ): Table<address, u64> {
+        let table_ = table::new(ctx);
+
+        let len = vector::length(&addresses);
+
+        while (len > 0) {
+            let amount = vector::pop_back(&mut amounts);
+
+            table::add(
+                &mut table_,
+                vector::pop_back(&mut addresses),
+                amount,
+            );
+
+            len = len - 1;
+        };
+
+        vector::destroy_empty(addresses);
+        vector::destroy_empty(amounts);
+
+        table_
     }
 
     // === Addresses ===

@@ -398,6 +398,27 @@ module refund::refund {
     // === Test Functions ===
 
     #[test_only]
+    public fun new_for_testing(
+        unclaimed: Table<address, u64>,
+        base_pool: Pool,
+        booster_pool: Pool,
+        accounting: Accounting,
+        phase: u8,
+        timeout_ts: Option<u64>,
+        ctx: &mut TxContext
+    ): RefundPool {
+        RefundPool {
+            id: object::new(ctx),
+            unclaimed,
+            base_pool,
+            booster_pool,
+            accounting,
+            phase,
+            timeout_ts,
+        }
+    }
+
+    #[test_only]
     public fun get_otw_for_testing(): REFUND {
         REFUND {}
     }
