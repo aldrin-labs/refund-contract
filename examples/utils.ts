@@ -76,3 +76,36 @@ export function bech32ToHex(bech32Address: string): string {
     return "";
   }
 }
+
+// A function to parse a comma-separated string into an array of numbers
+export function parseArrayFromStringAsNumbers(input: string): number[] {
+  return input.split(",").map(Number);
+}
+
+// A function to parse a comma-separated string into an array of numbers
+export function parseArrayFromString(input: string): string[] {
+  return input.split(",").map(String);
+}
+
+// A function to add two arrays of numbers. It returns a new array with the summed elements.
+export function addArrays(array1: number[], array2: number[]): number[] {
+  const maxLength = Math.max(array1.length, array2.length);
+  const result: number[] = [];
+
+  for (let i = 0; i < maxLength; i++) {
+    const val1 = array1[i] || 0; // Use 0 if the array doesn't have an element at this index
+    const val2 = array2[i] || 0;
+    result.push(val1 + val2);
+  }
+
+  return result;
+}
+
+// Function to validate that an environment variable is not undefined
+export function validateEnvVariable(name: string): string {
+  const value = process.env[name];
+  if (value === undefined) {
+    throw new Error(`Environment variable \`${name}\` is not set.`);
+  }
+  return value;
+}
