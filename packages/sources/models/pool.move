@@ -53,7 +53,18 @@ module refund::pool {
     }
 
     #[test_only]
-    public fun destroy_for_testing(pool: Pool): (
+    public fun destroy_for_testing(pool: Pool) {
+        let Pool {
+            funds,
+            funders,
+        } = pool;
+
+        balance::destroy_for_testing(funds);
+        table::drop(funders);
+    }
+    
+    #[test_only]
+    public fun destruct_for_testing(pool: Pool): (
         Balance<SUI>, Table<address, u64>
     ) {
         let Pool {

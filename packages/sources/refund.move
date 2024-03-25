@@ -3,7 +3,7 @@
 // claiming refunds and boosted refunds, and various getters for information about the pool and refunds.
 #[allow(lint(self_transfer))]
 module refund::refund {
-    // use std::debug::print;
+    use std::debug::print;
     use sui::tx_context::{TxContext, sender};
 	use sui::coin::{Self, Coin};
     use sui::transfer;
@@ -30,13 +30,19 @@ module refund::refund {
     const EAddressesAmountsVecLenMismatch: u64 = 2;
     const EPoolUnderfunded: u64 = 3;
     const EInvalidTimeoutTimestamp: u64 = 4;
-    const ECurrentTimeNotAboveTimeout: u64 = 6;
+    const ECurrentTimeBeforeTimeout: u64 = 6;
     const EInvalidFunder: u64 = 7;
+    const ERefundPoolHasZeroAddresses: u64 = 8;
+    const EPoolFundsNotEmpty: u64 = 9;
+    const EPoolBoosterFundsNotEmpty: u64 = 10;
+    const EInsufficientFunds: u64 = 11;
     
-    const ENotAddressAdditionPhase: u64 = 10;
-    const ENotFundingPhase: u64 = 11;
-    const ENotClaimPhase: u64 = 12;
-    const ENotReclaimPhase: u64 = 13;
+    const ENotAddressAdditionPhase: u64 = 101;
+    const ENotFundingPhase: u64 = 102;
+    const ENotClaimPhase: u64 = 103;
+    const ENotReclaimPhase: u64 = 104;
+
+    const MIN_DEFAULT_PERIOD: u64 = 1; // TODO
 
     friend refund::booster;
 
@@ -179,10 +185,11 @@ module refund::refund {
         assert_claim_phase(pool);
 
         let refund_amount = table::remove(&mut pool.unclaimed, original_address);
-
+        print(&refund_amount);
         let total_claimed = total_claimed_mut(&mut pool.accounting);
         *total_claimed = *total_claimed + refund_amount;
 
+        assert!(balance::value(funds(&pool.base_pool)) >= refund_amount, EInsufficientFunds);
         let funds = balance::split(funds_mut(&mut pool.base_pool), refund_amount);
 
         coin::from_balance(funds, ctx)
@@ -207,12 +214,13 @@ module refund::refund {
 
     // === Delete ===
 
+    // TODO: Should have publisher for safety
     public entry fun delete(
         pool: RefundPool,
     ) {
         assert_reclaim_phase(&pool);
-        assert!(balance::value(funds(&pool.base_pool)) == 0, 0);
-        assert!(balance::value(funds(&pool.booster_pool)) == 0, 0);
+        assert!(balance::value(funds(&pool.base_pool)) == 0, EPoolFundsNotEmpty);
+        assert!(balance::value(funds(&pool.booster_pool)) == 0, EPoolBoosterFundsNotEmpty);
 
         let RefundPool {
             id, // : UID,
@@ -273,7 +281,7 @@ module refund::refund {
 
     public(friend) fun unclaimed_mut(pool: &mut RefundPool): &mut Table<address, u64> { &mut pool.unclaimed }
     public(friend) fun accounting_mut(pool: &mut RefundPool): &mut Accounting { &mut pool.accounting }
-    public(friend) fun booster_pool_mut(pool: &mut RefundPool): &mut Pool { &mut pool.base_pool }
+    public(friend) fun booster_pool_mut(pool: &mut RefundPool): &mut Pool { &mut pool.booster_pool }
 
     public(friend) fun reclaim_funds_(
         inner_pool: &mut Pool,
@@ -315,8 +323,9 @@ module refund::refund {
     ) {
         assert_publisher(pub);
         assert_address_addition_phase(pool);
+        assert!(!table::is_empty(&pool.unclaimed), ERefundPoolHasZeroAddresses);
         
-        assert!(timeout_ts > clock::timestamp_ms(clock), EInvalidTimeoutTimestamp);
+        assert!(timeout_ts >= clock::timestamp_ms(clock) + MIN_DEFAULT_PERIOD, EInvalidTimeoutTimestamp);
         option::fill(&mut pool.timeout_ts, timeout_ts);
 
         next_phase(pool)
@@ -338,7 +347,7 @@ module refund::refund {
         clock: &Clock,
     ) {
         let timeout_ts = option::borrow(&pool.timeout_ts);
-        assert!(clock::timestamp_ms(clock) >= *timeout_ts, ECurrentTimeNotAboveTimeout);
+        assert!(clock::timestamp_ms(clock) >= *timeout_ts, ECurrentTimeBeforeTimeout);
 
         if (is_funding_phase(pool)) {
             let total_to_refund = total_to_refund(&pool.accounting);
@@ -424,7 +433,33 @@ module refund::refund {
     }
     
     #[test_only]
-    public fun destroy_for_testing(pool: RefundPool): (
+    public fun destroy_for_testing(pool: RefundPool) {
+        let RefundPool {
+            id,
+            unclaimed,
+            base_pool,
+            booster_pool,
+            accounting,
+            phase,
+            timeout_ts,
+        } = pool;
+
+        object::delete(id);
+
+        table::drop(unclaimed);
+        pool::destroy_for_testing(base_pool);
+        pool::destroy_for_testing(booster_pool);
+        accounting::destroy_for_testing(accounting);
+        
+        if (option::is_some(&timeout_ts)) {
+            option::destroy_some(timeout_ts);
+        } else {
+            option::destroy_none(timeout_ts);
+        };
+    }
+    
+    #[test_only]
+    public fun destruct_for_testing(pool: RefundPool): (
         Table<address, u64>, Pool, Pool, Accounting, u8, Option<u64>
     ) {
         let RefundPool {
@@ -462,5 +497,23 @@ module refund::refund {
 
         transfer::public_transfer(publisher, sender);
         transfer::share_object(list);
+    }
+    
+    #[test_only]
+    public fun empty_for_testing(ctx: &mut TxContext): (Publisher, RefundPool) {
+        // Init Publisher
+        let publisher = sui::package::claim(REFUND {}, ctx);
+
+        let list = RefundPool {
+            id: object::new(ctx),
+            unclaimed: table::new(ctx),
+            base_pool: pool::new(ctx),
+            booster_pool: pool::new(ctx),
+            accounting: accounting::new(),
+            phase: 1,
+            timeout_ts: none()
+        };
+
+        (publisher, list)
     }
 }

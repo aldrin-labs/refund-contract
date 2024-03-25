@@ -1,5 +1,5 @@
 module refund::booster {
-    // use std::debug::print;
+    use std::debug::print;
     use sui::tx_context::{TxContext, sender};
 	use sui::coin::{Self, Coin};
     use sui::transfer;
@@ -21,9 +21,10 @@ module refund::booster {
     };
     use refund::math::div;
     use refund::table::{Self as refund_table};
-    use refund::pool::{funders_mut, funds_mut};
+    use refund::pool::{funders_mut, funds, funds_mut};
 
     const EAddressRetrievedBoostCap: u64 = 0;
+    const EInsufficientFunds: u64 = 1;
 
     struct BoostedCapDfKey has copy, store, drop { affected_address: address }
 
@@ -88,7 +89,13 @@ module refund::booster {
         let refund_amount = *table::borrow(unclaimed(pool), affected_address);
 
         // Base Refund
+        // let remaining_balance = balance::value(funds(refund::base_pool(pool)));
+        // print(&remaining_balance);
+
         let refund = claim_refund_(pool, affected_address, ctx);
+
+        // let remaining_balance = balance::value(funds(refund::base_pool(pool)));
+        // print(&remaining_balance);
 
         // Booster Refund
         let boost = div(refund_amount, 2);
@@ -97,7 +104,9 @@ module refund::booster {
         *total_boosted = *total_boosted + boost;
 
         let booster = booster_pool_mut(pool);
+        assert!(balance::value(funds(booster)) >= boost, EInsufficientFunds);
         let boosted_funds = balance::split(funds_mut(booster), boost);
+
 
         balance::join(coin::balance_mut(&mut refund), boosted_funds);
 
@@ -135,4 +144,18 @@ module refund::booster {
         let current_liabilities = current_liabilities(accounting(pool));
         current_liabilities + div(current_liabilities, 2)
     }
+
+    // === Test Utils ===
+    
+    #[test_only]
+    public fun new_for_testing(
+        addr: address,
+        ctx: &mut TxContext,
+    ): BoostedClaimCap {
+        BoostedClaimCap {
+            id: object::new(ctx),
+            new_address: addr
+        }
+    }
+    
 }

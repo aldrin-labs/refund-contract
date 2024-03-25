@@ -75,7 +75,18 @@ module refund::accounting {
     }
 
     #[test_only]
-    public fun destroy_for_testing(pool: Accounting): (u64, u64, u64, u64, u64) {
+    public fun destroy_for_testing(pool: Accounting) {
+        let Accounting {
+            total_to_refund,
+            total_raised,
+            total_claimed,
+            total_raised_for_boost,
+            total_boosted,
+        } = pool;
+    }
+    
+    #[test_only]
+    public fun destruct_for_testing(pool: Accounting): (u64, u64, u64, u64, u64) {
         let Accounting {
             total_to_refund,
             total_raised,

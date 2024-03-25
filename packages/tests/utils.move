@@ -4,7 +4,7 @@ module refund::test_utils {
     use sui::package::Publisher;
     use sui::coin::{Self, Coin};
     use sui::sui::SUI;
-    use std::option::{Self, Option, is_some, borrow, some};
+    use std::option::{Self, Option, is_some, borrow, some, none};
     use sui::table::{Self, Table};
     use sui::balance;
     use sui::tx_context::TxContext;
@@ -91,17 +91,17 @@ module refund::test_utils {
             accounting,
             phase,
             timeout_ts,
-        ) = refund::destroy_for_testing(pool);
+        ) = refund::destruct_for_testing(pool);
 
-        let (base_funds, base_funders) = pool::destroy_for_testing(base_pool);
-        let (boost_funds, boost_funders) = pool::destroy_for_testing(booster_pool);
+        let (base_funds, base_funders) = pool::destruct_for_testing(base_pool);
+        let (boost_funds, boost_funders) = pool::destruct_for_testing(booster_pool);
         let (
             total_to_refund,
             total_raised,
             total_refunded,
             total_raised_for_boost,
             total_boosted,
-        ) = accounting::destroy_for_testing(accounting);
+        ) = accounting::destruct_for_testing(accounting);
 
         option::destroy_some(timeout_ts);
         table::drop(base_funders);
