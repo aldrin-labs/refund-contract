@@ -1,13 +1,15 @@
 module refund::math {
-    public fun mul(x: u64, y: u64): u64 {
-        let x = (x as u128);
-        let y = (y as u128);
-        ((x * y) as u64)
+    public fun div(x: u64, y: u64): u64 {
+        (x / y)
     }
 
-    public fun div(x: u64, y: u64): u64 {
+    public fun mul_div(x: u64, y: u64, z: u64): u64 {
         let x = (x as u128);
         let y = (y as u128);
-        ((x / y) as u64)
+        let z = (z as u128);
+        
+        let result = (((x * y) / z) as u64);
+
+        result
     }
 }

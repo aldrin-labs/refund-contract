@@ -4,7 +4,6 @@ module refund::fuzzy_unclaimed {
     use sui::table_vec::{Self, TableVec};
     use sui::test_random;
     use sui::address as sui_address;
-    // use std::debug::print;
 
     struct Claim has copy, store, drop {
         addr: address,

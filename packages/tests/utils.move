@@ -4,7 +4,7 @@ module refund::test_utils {
     use sui::package::Publisher;
     use sui::coin::{Self, Coin};
     use sui::sui::SUI;
-    use std::option::{Self, Option, is_some, borrow, some, none};
+    use std::option::{Self, Option, is_some, borrow, some};
     use sui::table::{Self, Table};
     use sui::balance;
     use sui::tx_context::TxContext;

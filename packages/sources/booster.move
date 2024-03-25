@@ -1,5 +1,4 @@
 module refund::booster {
-    use std::debug::print;
     use sui::tx_context::{TxContext, sender};
 	use sui::coin::{Self, Coin};
     use sui::transfer;
@@ -89,13 +88,7 @@ module refund::booster {
         let refund_amount = *table::borrow(unclaimed(pool), affected_address);
 
         // Base Refund
-        // let remaining_balance = balance::value(funds(refund::base_pool(pool)));
-        // print(&remaining_balance);
-
         let refund = claim_refund_(pool, affected_address, ctx);
-
-        // let remaining_balance = balance::value(funds(refund::base_pool(pool)));
-        // print(&remaining_balance);
 
         // Booster Refund
         let boost = div(refund_amount, 2);
@@ -115,7 +108,7 @@ module refund::booster {
 
     // === Phase 4: Reclaim Fund ===
 
-    public entry fun reclaim_fund(
+    public entry fun reclaim_funds(
         pool: &mut RefundPool,
         ctx: &mut TxContext,
     ) {

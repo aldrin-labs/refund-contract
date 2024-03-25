@@ -4,7 +4,6 @@ module refund::fuzzy_claim {
     use sui::table_vec::{Self, TableVec};
     use sui::test_random;
     use sui::address as sui_address;
-    // use std::debug::print;
 
     // Bit flag:
     // 1 --> Normal claim
@@ -34,20 +33,5 @@ module refund::fuzzy_claim {
         };
 
         claim_status
-    }
-
-
-    // Sum bytes of the address for our basic "randomization" technique
-    fun bytes_to_sum(bytes: &vector<u8>): u8 {
-        let sum: u8 = 0;
-        let len = vector::length(bytes);
-        let i = 0;
-
-        while (i < len) {
-            sum = ((((sum + *vector::borrow(bytes, i)) as u16) % 255u16) as u8); // Keeping the sum within u8 range
-            i = i + 1;
-        };
-
-        sum
     }
 }

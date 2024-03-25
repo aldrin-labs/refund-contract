@@ -28,6 +28,8 @@ module refund::table {
         abort(EAmountTooBig)
     }
 
+    // === Tests ===
+
     #[test_only]
     use sui::test_scenario::{Self as ts, ctx};
 

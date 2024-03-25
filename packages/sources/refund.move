@@ -3,7 +3,6 @@
 // claiming refunds and boosted refunds, and various getters for information about the pool and refunds.
 #[allow(lint(self_transfer))]
 module refund::refund {
-    use std::debug::print;
     use sui::tx_context::{TxContext, sender};
 	use sui::coin::{Self, Coin};
     use sui::transfer;
@@ -16,7 +15,7 @@ module refund::refund {
     use sui::clock::{Self, Clock};
     use std::option::{Self, Option, some, none};
     
-    use refund::math::{mul, div};
+    use refund::math::{div, mul_div};
     use refund::pool::{Self, Pool, funds, funders_mut, funds_mut};
     use refund::table::{Self as refund_table};
     use refund::accounting::{
@@ -185,7 +184,6 @@ module refund::refund {
         assert_claim_phase(pool);
 
         let refund_amount = table::remove(&mut pool.unclaimed, original_address);
-        print(&refund_amount);
         let total_claimed = total_claimed_mut(&mut pool.accounting);
         *total_claimed = *total_claimed + refund_amount;
 
@@ -278,7 +276,6 @@ module refund::refund {
     // === Friends ===
 
     public(friend) fun uid_mut(pool: &mut RefundPool): &mut UID { &mut pool.id }
-
     public(friend) fun unclaimed_mut(pool: &mut RefundPool): &mut Table<address, u64> { &mut pool.unclaimed }
     public(friend) fun accounting_mut(pool: &mut RefundPool): &mut Accounting { &mut pool.accounting }
     public(friend) fun booster_pool_mut(pool: &mut RefundPool): &mut Pool { &mut pool.booster_pool }
@@ -303,10 +300,8 @@ module refund::refund {
             // ReclaimAmount = Leftovers * FundingAmount/TotalRaised
             // 
             // We first upscale then downscale
-            div(
-                mul(total_unclaimed, funding_amount),
-                total_raised
-            )
+            mul_div(funding_amount, total_unclaimed, total_raised)
+
         };
 
         let reclaim_funds = coin::from_balance(balance::split(funds, reclaim_amount), ctx);
@@ -440,7 +435,7 @@ module refund::refund {
             base_pool,
             booster_pool,
             accounting,
-            phase,
+            phase: _,
             timeout_ts,
         } = pool;
 

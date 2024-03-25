@@ -77,11 +77,11 @@ module refund::accounting {
     #[test_only]
     public fun destroy_for_testing(pool: Accounting) {
         let Accounting {
-            total_to_refund,
-            total_raised,
-            total_claimed,
-            total_raised_for_boost,
-            total_boosted,
+            total_to_refund: _,
+            total_raised: _,
+            total_claimed: _,
+            total_raised_for_boost: _,
+            total_boosted: _,
         } = pool;
     }
     

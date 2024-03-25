@@ -1,6 +1,6 @@
 #[test_only]
 module refund::refund_tests {
-    use std::debug::print;
+    use std::vector;
     use sui::test_scenario::{Self as ts, ctx};
     use sui::transfer;
     use sui::balance;
@@ -10,10 +10,12 @@ module refund::refund_tests {
     use sui::sui::SUI;
     use sui::clock;
     use std::option::{some, none};
-
-    use refund::pool;
-    use refund::accounting;
-    use refund::refund::{Self, REFUND, RefundPool};
+    use sui::table_vec;
+    
+    use refund::math::div;
+    use refund::accounting::{Self, total_claimed, total_boosted, total_raised, total_raised_for_boost};
+    use refund::pool::{Self, funds};
+    use refund::refund::{Self, REFUND, RefundPool, accounting, base_pool, booster_pool};
     use refund::booster;
     use refund::test_utils::{
         Self, publisher,
@@ -21,6 +23,10 @@ module refund::refund_tests {
         wallet_2, rinbot_2,
         wallet_3, rinbot_3,
     };
+    use refund::fuzzy_unclaimed::{Self, addr, amt};
+    use refund::fuzzy_funding;
+    use refund::fuzzy_claim;
+    
 
     const FUNDER_1: address = @0x100;
     const FUNDER_2: address = @0x200;
@@ -798,17 +804,6 @@ module refund::refund_tests {
         clock::destroy_for_testing(clock);
         ts::end(scenario);
     }
-
-    use std::vector;
-    use refund::fuzzy_unclaimed::{Self, addr, amt};
-    use refund::fuzzy_funding;
-    use refund::fuzzy_claim;
-    use refund::math::div;
-    use refund::refund::{accounting, base_pool, booster_pool};
-    use refund::accounting::{total_claimed, total_boosted, total_raised, total_raised_for_boost};
-    use refund::pool::{funds};
-    use sui::table_vec;
-    use std::string::utf8;
     
     #[test]
     fun fuzzy_test() {
@@ -819,7 +814,7 @@ module refund::refund_tests {
         let total_raised_expected = total_to_refund_expected;
         let total_raised_boosted_expected = div(total_raised_expected, 2);
 
-        let (funders, funders_boost) = fuzzy_funding::funders(
+        let (funders_vec, funders, funders_boost) = fuzzy_funding::funders(
             total_raised_expected,
             total_raised_boosted_expected,
             ctx(&mut scenario)
@@ -834,10 +829,6 @@ module refund::refund_tests {
             balance::create_for_testing(total_raised_boosted_expected),
             funders_boost
         );
-
-        // let total_claimed_expected = 406_324_562_400_408;
-        // let total_raised_for_boost_expected = 248_199_222_503_111;
-        // let total_boosted_expected = 46_754_097_651_531;
 
         // Act: Initialize the refund pool
         let refund_pool = refund::new_for_testing(
@@ -855,9 +846,6 @@ module refund::refund_tests {
             some(1706745601), // Thu Feb 01 2024 00:00:01 GMT+0000
             ctx(&mut scenario)
         );
-
-        // print(&total_raised_expected);
-        // print(&total_raised_boosted_expected);
 
         // Assert: Verify initialization logic such as checking for a non-empty RefundPool, correct `id`, and initial `accounting` values.
         // This might include checking the `unclaimed` table is empty, `funds` are zero, etc.
@@ -907,44 +895,89 @@ module refund::refund_tests {
         assert!(remaining_balance_boost == total_raised_for_boost(accounting(&refund_pool)) - total_boosted(accounting(&refund_pool)), 0);
         assert!(total_claimed(accounting(&refund_pool)) == 6_270_131_423_872, 0);
         assert!(total_boosted(accounting(&refund_pool)) == 1_824_928_799_201, 0);
+        assert!(remaining_balance == 4_215_654_554_741, 0);
+        assert!(remaining_balance_boost == 3_417_964_190_105, 0);
 
+        // === Reclaiming ===
+
+        clock::set_for_testing(&mut clock, 1706745602);
+        refund::start_reclaim_phase(&mut refund_pool, &clock);
+
+        let amounts_to_reclaim = vector[
+            182942720828 + 11, // 11 => cumulative rounding error
+            21985282120,
+            351941327035,
+            77885747801,
+            46573617051,
+            352621509278,
+            88053607368,
+            209662329842,
+            102348830120,
+            380035667132,
+            215609219698,
+            224824821516,
+            239065676148,
+            373185244269,
+            329507530061,
+            257138914837,
+            5793897510,
+            59555184660,
+            133566432536,
+            265519808774,
+            19673198200,
+            278163987946,
+        ];
+        
+        let amounts_to_reclaim_boosted = vector[
+            267071514862 + 7, // 7 => cumulative rounding error
+            170147089332,
+            67416403760,
+            390140539463,
+            10808654707,
+            518278712072,
+            400343787877,
+            491970035970,
+            18140699738,
+            317886346788,
+            282672986623,
+            436809771179,
+            46277647734,
+        ];
+
+        ts::next_tx(&mut scenario, publisher());
+
+        let funders_len = table_vec::length(&funders_vec);
+
+        while (funders_len > 0) {
+            let funder = table_vec::pop_back(&mut funders_vec);
+            let expected_amount_to_reclaim = vector::pop_back(&mut amounts_to_reclaim);
+            ts::next_tx(&mut scenario, funder);
+
+            refund::reclaim_funds(&mut refund_pool, ctx(&mut scenario));
+            ts::next_tx(&mut scenario, funder);
+            let funds = ts::take_from_address<Coin<SUI>>(&scenario, funder);
+            assert!(coin::value(&funds) == expected_amount_to_reclaim, 0);
+            coin::burn_for_testing(funds);
+            
+            // Boost
+            if (vector::length(&amounts_to_reclaim_boosted) > 0) {
+                let expected_amount_to_reclaim_boosted = vector::pop_back(&mut amounts_to_reclaim_boosted);
+
+                booster::reclaim_funds(&mut refund_pool, ctx(&mut scenario));
+                ts::next_tx(&mut scenario, funder);
+                let funds = ts::take_from_address<Coin<SUI>>(&scenario, funder);
+                assert!(expected_amount_to_reclaim_boosted - coin::value(&funds) <= 1, 0); // 1 ==> rounding error margin
+                coin::burn_for_testing(funds);
+            };
+
+            funders_len = funders_len - 1;
+        };
+
+        table_vec::drop(funders_vec);
         table_vec::drop(claim_status);
         table_vec::drop(unclaimed_vec);
         refund::destroy_for_testing(refund_pool); // todo: checks
         clock::destroy_for_testing(clock);
         ts::end(scenario);
     }
-
-    // #[test]
-    // fun fuzzy_test_boosted_claim() {}
-
-    // #[test]
-    // fun fuzzy_test_boosted_claim() {}
-
-    // #[test]
-    // fun test_check_total_to_refund() {}
-
-    // #[test]
-    // fun test_check_total_raised() {}
-
-    // #[test]
-    // fun test_check_total_claimed() {}
-
-    // #[test]
-    // fun test_check_total_raised_for_boost() {}
-
-    // #[test]
-    // fun test_check_total_boosted() {}
-    
-    // #[test]
-    // fun test_current_liability() {}
-    
-    // #[test]
-    // fun test_current_liability_boosted() {}
-    
-    // #[test]
-    // fun test_reclaim_funds() {}
-    
-    // #[test]
-    // fun test_reclaim_funds_boosted() {}
 }

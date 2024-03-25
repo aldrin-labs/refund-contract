@@ -9,7 +9,7 @@ module refund::fuzzy_funding {
         total_to_raise: u64,
         total_to_raised_boosted: u64,
         ctx: &mut TxContext
-    ): (Table<address, u64>, Table<address, u64>) {
+    ): (TableVec<address>, Table<address, u64>, Table<address, u64>) {
         let funders = table::new(ctx);
         let funders_boost = table::new(ctx);
 
@@ -17,12 +17,14 @@ module refund::fuzzy_funding {
         let rand_amt_boost = test_random::new(vector[16, 16, 16, 16]);
         let rand_addr = test_random::new(vector[8, 8, 8, 8]);
         let addr_list: TableVec<address> = table_vec::empty(ctx);
+        let funders_list: TableVec<address> = table_vec::empty(ctx);
 
         while (total_to_raise > 0) {
             let amount = test_random::next_u64_in_range(&mut rand_amt, 999_999_999_999);
             let addr = sui_address::from_u256(test_random::next_u256(&mut rand_addr));
 
             table_vec::push_back(&mut addr_list, addr);
+            table_vec::push_back(&mut funders_list, addr);
 
             if (amount > total_to_raise) {
                 amount = total_to_raise;
@@ -55,6 +57,6 @@ module refund::fuzzy_funding {
 
         table_vec::drop(addr_list);
         
-        (funders, funders_boost)
+        (funders_list, funders, funders_boost)
     }
 }
