@@ -35,13 +35,16 @@ module refund::refund {
     const EPoolFundsNotEmpty: u64 = 9;
     const EPoolBoosterFundsNotEmpty: u64 = 10;
     const EInsufficientFunds: u64 = 11;
+    const EClaimPhaseExpired: u64 = 12;
     
     const ENotAddressAdditionPhase: u64 = 101;
     const ENotFundingPhase: u64 = 102;
     const ENotClaimPhase: u64 = 103;
     const ENotReclaimPhase: u64 = 104;
 
-    const MIN_DEFAULT_PERIOD: u64 = 1; // TODO
+    /// Minimum claim period in milliseconds
+    /// corresponding to 3 days
+    const MIN_CLAIM_PERIOD_MS: u64 = 259_200_000;
 
     friend refund::booster;
 
@@ -184,7 +187,7 @@ module refund::refund {
         ctx: &mut TxContext,
     ): Coin<SUI> {
         let timeout_ts = *option::borrow(&pool.timeout_ts);
-        assert!(timeout_ts >= clock::timestamp_ms(clock) + MIN_DEFAULT_PERIOD, EInvalidTimeoutTimestamp);
+        assert!(clock::timestamp_ms(clock) < timeout_ts, EClaimPhaseExpired);
         assert_claim_phase(pool);
 
         let refund_amount = table::remove(&mut pool.unclaimed, original_address);
@@ -323,7 +326,7 @@ module refund::refund {
         assert_address_addition_phase(pool);
         assert!(!table::is_empty(&pool.unclaimed), ERefundPoolHasZeroAddresses);
         
-        assert!(timeout_ts >= clock::timestamp_ms(clock) + MIN_DEFAULT_PERIOD, EInvalidTimeoutTimestamp);
+        assert!(timeout_ts >= clock::timestamp_ms(clock) + MIN_CLAIM_PERIOD_MS, EInvalidTimeoutTimestamp);
         option::fill(&mut pool.timeout_ts, timeout_ts);
 
         next_phase(pool)
@@ -388,7 +391,7 @@ module refund::refund {
     public(friend) fun assert_address(pool: &RefundPool, sender: address) {
         assert!(table::contains(&pool.unclaimed, sender), EInvalidAddress);
     }
-
+    
     fun is_address_addition_phase(pool: &RefundPool): bool {
         pool.phase == 1
     }
