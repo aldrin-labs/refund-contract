@@ -102,7 +102,7 @@ module refund::refund_tests {
         ts::next_tx(&mut scenario, wallet_1());
         
         // Permissionless endpoint to transition to claim phase
-        refund::start_claim_phase(&mut refund_pool);
+        refund::start_claim_phase(&mut refund_pool, &clock);
      
         test_utils::claim(&mut refund_pool, wallet_1(), some(2_000), &clock, &mut scenario);
         test_utils::claim(&mut refund_pool, wallet_2(), some(2_000), &clock, &mut scenario);
@@ -186,7 +186,7 @@ module refund::refund_tests {
         ts::next_tx(&mut scenario, publisher());
 
         // Permissionless endpoint to transition to claim phase
-        refund::start_claim_phase(&mut refund_pool);
+        refund::start_claim_phase(&mut refund_pool, &clock);
         test_utils::claim_boosted(
             &pub,
             &mut refund_pool,
@@ -366,7 +366,7 @@ module refund::refund_tests {
         ts::next_tx(&mut scenario, FAKE_WALLET);
 
         // Permissionless endpoint to transition to claim phase
-        refund::start_claim_phase(&mut refund_pool);
+        refund::start_claim_phase(&mut refund_pool, &clock);
         refund::claim_refund(&mut refund_pool, &clock, ctx(&mut scenario));
         // Wrap up testing 
         ts::next_tx(&mut scenario, publisher());
@@ -732,7 +732,7 @@ module refund::refund_tests {
         ts::next_tx(&mut scenario, FUNDER_1);
         clock::set_for_testing(&mut clock, 1706745600);
 
-        refund::start_claim_phase(&mut refund_pool);
+        refund::start_claim_phase(&mut refund_pool, &clock);
 
         test_utils::destroy_and_check(refund_pool);
         clock::destroy_for_testing(clock);

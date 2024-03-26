@@ -187,7 +187,7 @@ module refund::refund {
         ctx: &mut TxContext,
     ): Coin<SUI> {
         let timeout_ts = *option::borrow(&pool.timeout_ts);
-        assert!(clock::timestamp_ms(clock) < timeout_ts, EClaimPhaseExpired);
+        assert_claim_phase_time(timeout_ts, clock);
         assert_claim_phase(pool);
 
         let refund_amount = table::remove(&mut pool.unclaimed, original_address);
@@ -334,8 +334,12 @@ module refund::refund {
 
     public entry fun start_claim_phase(
         pool: &mut RefundPool,
+        clock: &Clock,
     ) {
         assert_funding_phase(pool);
+        let timeout_ts = *option::borrow(&pool.timeout_ts);
+        assert_claim_phase_time(timeout_ts, clock);
+
         let total_to_refund = total_to_refund(&pool.accounting);
         let total_raised = total_raised(&pool.accounting);
         assert!(total_to_refund == total_raised, EPoolUnderfunded);
@@ -390,6 +394,10 @@ module refund::refund {
     
     public(friend) fun assert_address(pool: &RefundPool, sender: address) {
         assert!(table::contains(&pool.unclaimed, sender), EInvalidAddress);
+    }
+    
+    fun assert_claim_phase_time(timeout_ts: u64, clock: &Clock) {
+        assert!(clock::timestamp_ms(clock) < timeout_ts, EClaimPhaseExpired);
     }
     
     fun is_address_addition_phase(pool: &RefundPool): bool {
