@@ -9,6 +9,7 @@ module refund::test_utils {
     use sui::balance;
     use sui::tx_context::TxContext;
     use std::vector;
+    use sui::clock::Clock;
 
     use refund::pool::{Self, Pool};
     use refund::accounting::{Self, Accounting};
@@ -25,6 +26,7 @@ module refund::test_utils {
         affected_address: address,
         new_address: address,
         amt_check: Option<u64>,
+        clock: &Clock,
         scenario: &mut ts::Scenario,
     ) {
         ts::next_tx(scenario, publisher());
@@ -48,6 +50,7 @@ module refund::test_utils {
         booster::claim_refund_boosted(
             boost_cap,
             pool,
+            clock,
             ctx(scenario),
         );
 
@@ -62,6 +65,7 @@ module refund::test_utils {
         pool: &mut RefundPool,
         affected_address: address,
         amt_check: Option<u64>,
+        clock: &Clock,
         scenario: &mut ts::Scenario,
     ) {
         ts::next_tx(scenario, affected_address);
@@ -73,6 +77,7 @@ module refund::test_utils {
 
         refund::claim_refund(
             pool,
+            clock,
             ctx(scenario),
         );
 

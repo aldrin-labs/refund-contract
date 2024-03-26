@@ -8,6 +8,7 @@ module refund::booster {
     use sui::object::{Self, UID};
     use sui::package::Publisher;
     use sui::sui::SUI;
+    use sui::clock::Clock;
     
     use refund::refund::{
         Self, RefundPool, claim_refund_,
@@ -77,6 +78,7 @@ module refund::booster {
     public entry fun claim_refund_boosted(
         cap: BoostedClaimCap,
         pool: &mut RefundPool,
+        clock: &Clock,
         ctx: &mut TxContext,
     ) {
         let affected_address = sender(ctx);
@@ -88,7 +90,7 @@ module refund::booster {
         let refund_amount = *table::borrow(unclaimed(pool), affected_address);
 
         // Base Refund
-        let refund = claim_refund_(pool, affected_address, ctx);
+        let refund = claim_refund_(pool, affected_address, clock, ctx);
 
         // Booster Refund
         let boost = div(refund_amount, 2);

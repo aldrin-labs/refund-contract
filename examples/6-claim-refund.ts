@@ -1,5 +1,6 @@
 import { TransactionBlock } from "@mysten/sui.js/transactions";
 import { Ed25519Keypair } from "@mysten/sui.js/keypairs/ed25519";
+import { SUI_CLOCK_OBJECT_ID } from "@mysten/sui.js/utils";
 import {
   signAndExecuteTransaction,
   hexStringToUint8Array,
@@ -17,7 +18,7 @@ import {
 
   txb.moveCall({
     target: `${contractAddress}::refund::claim_refund`,
-    arguments: [txb.object(poolId)],
+    arguments: [txb.object(poolId), txb.object(SUI_CLOCK_OBJECT_ID)],
   });
 
   // const res = await provider.devInspectTransactionBlock({

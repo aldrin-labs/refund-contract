@@ -168,19 +168,23 @@ module refund::refund {
     /// - If the claimer's address is not in the list of unclaimed refunds.
     public entry fun claim_refund(
         pool: &mut RefundPool,
+        clock: &Clock,
         ctx: &mut TxContext,
     ) {
         let sender = sender(ctx);
         assert_address(pool, sender);
 
-        transfer::public_transfer(claim_refund_(pool, sender, ctx), sender);
+        transfer::public_transfer(claim_refund_(pool, sender, clock, ctx), sender);
     }
     
     public(friend) fun claim_refund_(
         pool: &mut RefundPool,
         original_address: address,
+        clock: &Clock,
         ctx: &mut TxContext,
     ): Coin<SUI> {
+        let timeout_ts = *option::borrow(&pool.timeout_ts);
+        assert!(timeout_ts >= clock::timestamp_ms(clock) + MIN_DEFAULT_PERIOD, EInvalidTimeoutTimestamp);
         assert_claim_phase(pool);
 
         let refund_amount = table::remove(&mut pool.unclaimed, original_address);
@@ -212,7 +216,6 @@ module refund::refund {
 
     // === Delete ===
 
-    // TODO: Should have publisher for safety
     public entry fun delete(
         pool: RefundPool,
     ) {

@@ -104,9 +104,9 @@ module refund::refund_tests {
         // Permissionless endpoint to transition to claim phase
         refund::start_claim_phase(&mut refund_pool);
      
-        test_utils::claim(&mut refund_pool, wallet_1(), some(2_000), &mut scenario);
-        test_utils::claim(&mut refund_pool, wallet_2(), some(2_000), &mut scenario);
-        test_utils::claim(&mut refund_pool, wallet_3(), some(2_000), &mut scenario);
+        test_utils::claim(&mut refund_pool, wallet_1(), some(2_000), &clock, &mut scenario);
+        test_utils::claim(&mut refund_pool, wallet_2(), some(2_000), &clock, &mut scenario);
+        test_utils::claim(&mut refund_pool, wallet_3(), some(2_000), &clock, &mut scenario);
 
         test_utils::destroy_and_check(refund_pool);
         ts::return_to_address(publisher(), pub);
@@ -193,6 +193,7 @@ module refund::refund_tests {
             wallet_1(),
             rinbot_1(),
             some(3_000),
+            &clock,
             &mut scenario,
         );
 
@@ -202,6 +203,7 @@ module refund::refund_tests {
             wallet_2(),
             rinbot_2(),
             some(3_000),
+            &clock,
             &mut scenario,
         );
 
@@ -211,6 +213,7 @@ module refund::refund_tests {
             wallet_3(),
             rinbot_3(),
             some(3_000),
+            &clock,
             &mut scenario,
         );
 
@@ -281,6 +284,7 @@ module refund::refund_tests {
             wallet_1(),
             rinbot_1(),
             none(),
+            &clock,
             &mut scenario,
         );
 
@@ -363,7 +367,7 @@ module refund::refund_tests {
 
         // Permissionless endpoint to transition to claim phase
         refund::start_claim_phase(&mut refund_pool);
-        refund::claim_refund(&mut refund_pool, ctx(&mut scenario));
+        refund::claim_refund(&mut refund_pool, &clock, ctx(&mut scenario));
         // Wrap up testing 
         ts::next_tx(&mut scenario, publisher());
 
@@ -865,11 +869,11 @@ module refund::refund_tests {
 
             if (status == 1) {
                 actual_claim_amount = amt(&claim);
-                refund::claim_refund(&mut refund_pool, ctx(&mut scenario));
+                refund::claim_refund(&mut refund_pool, &clock, ctx(&mut scenario));
             } else if (status == 2) {
                 actual_claim_amount = amt(&claim) + div(amt(&claim), 2);
                 let cap = booster::new_for_testing(sender, ctx(&mut scenario));
-                booster::claim_refund_boosted(cap, &mut refund_pool, ctx(&mut scenario));
+                booster::claim_refund_boosted(cap, &mut refund_pool, &clock, ctx(&mut scenario));
             };
 
             if (status != 3) {
