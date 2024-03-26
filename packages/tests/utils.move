@@ -50,6 +50,7 @@ module refund::test_utils {
         booster::claim_refund_boosted(
             boost_cap,
             pool,
+            new_address,
             clock,
             ctx(scenario),
         );

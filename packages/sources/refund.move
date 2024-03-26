@@ -36,6 +36,7 @@ module refund::refund {
     const EPoolBoosterFundsNotEmpty: u64 = 10;
     const EInsufficientFunds: u64 = 11;
     const EClaimPhaseExpired: u64 = 12;
+    const EOverfunded: u64 = 13;
     
     const ENotAddressAdditionPhase: u64 = 101;
     const ENotFundingPhase: u64 = 102;
@@ -51,13 +52,20 @@ module refund::refund {
     // OTW
     struct REFUND has drop {}
 
-    /// Represents a pool of funds allocated for refunds, along with a record of unclaimed refunds.
-    /// 
+    /// Manages funds for refunds and records unclaimed refunds.
+    ///
     /// Fields:
-    /// - `id`: A unique identifier for the RefundPool, used to track and manage the pool within the system.
-    /// - `unclaimed`: A table mapping addresses to the amount of funds they are eligible to claim as a refund. This ensures only eligible addresses can claim their specified amounts.
-    /// - `funds`: The total balance of SUI coins held in the refund pool. This balance is used to fulfill refund claims made by eligible addresses.
-    /// - `accounting`: A record of accounting metrics related to the refund process, including the total amount refunded, the total amount boosted (for eligible claims made through specific channels like Rinbot), and the current liabilities of the refund pool.
+    /// - `id`: Unique identifier for the pool.
+    /// - `unclaimed`: Maps addresses to amounts eligible for refund, ensuring
+    /// claims are made by eligible addresses.
+    /// - `base_pool`: Holds funds for 100% refunds.
+    /// - `booster_pool`: Holds funds for 50% boosted refunds for eligible claims.
+    /// - `accounting`: Tracks financial metrics like total refunded, totalboosted,
+    /// and liabilities.
+    /// - `phase`: Indicates the current process phase (1: Address Addition,
+    /// 2: Funding, 3: Claim, 4: Reclaim).
+    /// - `timeout_ts`: Timestamp in milliseconds when the pool enters
+    /// reclaim phase, allowing funders to reclaim leftover funds.
     struct RefundPool has key {
         id: UID,
         unclaimed: Table<address, u64>,
@@ -74,7 +82,8 @@ module refund::refund {
     }
     
     /// Initializes the refund module during contract publishing.
-    /// Sets up the refund pool and transfers ownership from the publisher to the sender.
+    /// Sets up the refund pool in its initial phase (Address Addition phase)
+    /// and transfers ownership from the publisher to the sender.
     fun init(otw: REFUND, ctx: &mut TxContext) {
         // Init Publisher
         let publisher = sui::package::claim(otw, ctx);
@@ -96,15 +105,31 @@ module refund::refund {
 
     // === Phase 1: Setup ===
 
-    /// Adds addresses and corresponding amounts to the refund pool. This endpoint
-    /// is reserved to Aldrin, i.e the owner of the `Publisher` object
-    /// 
+    /// Adds addresses and their corresponding refund amounts to the Refund Pool.
+    /// This function is exclusively callable by the owner of the `Publisher` object.
+    ///
+    /// Usage of this endpoint is restricted to the address addition phase of the refund process.
+    /// It ensures that only the Publisher owner can add addresses and amounts,
+    /// maintaining the integrity and security of the refund process.
+    ///
     /// #### Panics
-    /// 
-    /// - If the publisher is not valid.
-    /// - If the lengths of the addresses and amounts vectors do not match.
-    /// - If a given address already exists in the refund pool
-    /// - If there are duplicated addresses in the `adresses` vector
+    ///
+    /// - If the `Publisher` is not valid.
+    /// - If the lengths of the `addresses` and `amounts` vectors do not match,
+    /// indicating a mismatch in address to amount mapping.
+    /// - If an address is already present in the refund pool, preventing
+    /// duplicate entries.
+    /// - If there are duplicated addresses within the `addresses` vector,
+    /// ensuring each address is unique and accounted for individually.
+    ///
+    /// This endpoint must be called by the Publisher owner to maintain controlled
+    /// access and update of refundable addresses and their corresponding amounts.
+    ///
+    /// Parameters:
+    /// - `pub`: Reference to the `Publisher`, verifying operation permission.
+    /// - `pool`: Mutable reference to the `RefundPool`, where addresses and amounts will be added.
+    /// - `addresses`: Vector of addresses eligible for refunds.
+    /// - `amounts`: Vector of amounts corresponding to each address in `addresses`.
     public entry fun add_addresses(
         pub: &Publisher,
         pool: &mut RefundPool,
@@ -138,7 +163,25 @@ module refund::refund {
 
     // === Phase 2: Funding ===
 
-    /// Permissionless endpoint for funding the fund pool with the given SUI coin.
+    /// Allows participants to contribute SUI coins to the Refund Pool
+    /// during the funding phase. This entrypoint is permissionless.
+    /// Contributions are tracked against the sender's address.
+    /// If contributions exceed the pool's required funding,
+    /// the function asserts to prevent overfunding.
+    ///
+    /// Panics:
+    /// - If the pool is not in the funding phase, ensuring that funds are
+    /// collected only during the appropriate phase.
+    /// - If the contribution would lead to overfunding, maintaining strict
+    /// control over the total amount raised to match the refundable amounts.
+    ///
+    /// This function also updates the pool's accounting to reflect the
+    /// new total raised and adjusts the balance of the pool's base funds accordingly.
+    ///
+    /// Parameters:
+    /// - `pool`: Mutable reference to the Refund Pool to which funds
+    /// are being contributed.
+    /// - `coin`: The SUI coin being contributed to the pool.
     public entry fun fund(
         pool: &mut RefundPool,
         coin: Coin<SUI>,
@@ -154,7 +197,7 @@ module refund::refund {
         let total_raised = total_raised_mut(&mut pool.accounting);
 
         let is_overfunded = *total_raised + amount > total_to_refund;
-        assert!(!is_overfunded, 0);
+        assert!(!is_overfunded, EOverfunded);
 
         *total_raised = *total_raised + amount;
         balance::join(funds_mut(&mut pool.base_pool), coin::into_balance(coin)); 
@@ -168,7 +211,14 @@ module refund::refund {
     /// 
     /// #### Panics
     /// 
-    /// - If the claimer's address is not in the list of unclaimed refunds.
+    /// - If the claimer's address is not found in the `unclaimed` table,
+    /// indicating no refund is due.
+    /// - If the current phase is not the claim phase, ensuring refunds are 
+    /// laimed at the correct time.
+    /// - If the current timestamp surpasses the timeout timestamp,
+    /// enforcing the timing constraints of the refund process.
+    /// - If the pool does not have sufficient funds to cover the
+    /// claimed amount, preventing the execution of an invalid claim.
     public entry fun claim_refund(
         pool: &mut RefundPool,
         clock: &Clock,
@@ -316,6 +366,37 @@ module refund::refund {
 
     // === Phase Transitions ===
     
+    /// Initiates the funding phase for the Refund Pool, setting a timeout
+    /// for when this **Claiming phase** ends.
+    /// This entry point is exclusively accessible by the owner of the `Publisher`
+    /// object, ensuring controlled progression to the funding phase.
+    ///
+    /// Before transitioning to the funding phase, this function validates the
+    /// current phase to ensure it's correct for this operation and checks
+    /// that the refund pool has at least one address eligible for refunds.
+    /// It also validates the provided timeout timestamp against the current
+    /// time to ensure it meets the minimum claim period requirement.
+    ///
+    /// #### Panics
+    ///
+    /// - If the caller is not the `Publisher` owner.
+    /// - If the pool is not in the address addition phase,
+    /// ensuring sequential phase progression.
+    /// - If the `unclaimed` table within the pool is empty,
+    /// indicating there are no addresses to fund.
+    /// - If the `timeout_ts` does not meet the minimum duration
+    /// from the current timestamp, ensuring there's adequate time for
+    /// the funding phase.
+    ///
+    /// Parameters:
+    /// - `pub`: Reference to the `Publisher`, verifying the caller
+    /// has authority to initiate the funding phase.
+    /// - `pool`: Mutable reference to the `RefundPool` to transition
+    /// into the funding phase.
+    /// - `timeout_ts`: Timestamp (in milliseconds) specifying when the
+    /// claiming phase will end and transition to the reclaim phase.
+    /// - `clock`: Reference to a `Clock` for obtaining the current timestamp,
+    /// used in validating `timeout_ts`.
     public entry fun start_funding_phase(
         pub: &Publisher,
         pool: &mut RefundPool,
@@ -332,6 +413,27 @@ module refund::refund {
         next_phase(pool)
     }
 
+    /// Initiates the claim phase for the Refund Pool, where eligible addresses
+    /// can start claiming their refunds. This transition is allowed only
+    /// after the funding phase has concluded and the total funds raised
+    /// match the total amount set for refunds.
+    ///
+    /// Panics:
+    /// - If the pool is not in the funding phase, ensuring the transition
+    /// to the claim phase follows the correct sequence.
+    /// - If the current time has reached the `timeout_ts` set during
+    /// the funding phase, ensuring the claim phase is still valid.
+    /// - If the total amount raised does not match the total amount set
+    /// to be refunded, indicating the pool is underfunded and not ready to
+    /// proceed to the claim phase.
+    ///
+    /// This function checks the pool's funding status against its refund
+    /// obligations and moves the pool to the next phase if conditions are met,
+    /// allowing refund claims to be processed.
+    ///
+    /// Parameters:
+    /// - `pool`: Mutable reference to the Refund Pool transitioning to the claim phase.
+    /// - `clock`: Reference to the system clock for validating the timing condition.
     public entry fun start_claim_phase(
         pool: &mut RefundPool,
         clock: &Clock,
@@ -347,6 +449,34 @@ module refund::refund {
         next_phase(pool)
     }
     
+    /// Initiates the reclaim phase of the Refund Pool, allowing funders to
+    /// reclaim their contributions if the fundraising or claim phases did not
+    /// fully utilize the collected funds.
+    ///
+    /// The transition to the reclaim phase is contingent upon the completion
+    /// of the preceding phase, whether it be the funding or claim phase,
+    /// and the verification that the current time has
+    /// surpassed the designated timeout timestamp.
+    ///
+    /// #### Panics
+    ///
+    /// - If the current timestamp is before the timeout timestamp set during
+    /// the funding phase, ensuring that the reclaim phase does not start prematurely.
+    /// - If in the funding phase and the total raised is equal to or greater
+    /// than the total amount set for refunds.
+    /// - If the pool is not in the correct phase,
+    /// ensuring the logical progression of phases.
+    ///
+    /// This function checks the pool's current phase to determine the
+    /// appropriate preconditions for entering the reclaim phase.
+    /// If transitioning from the funding phase, it verifies that the funds raised
+    /// are less than the total to refund, indicating that the fundaraising did not
+    /// achieve its target amount. If transitioning from the claim phase,
+    ///  it simply proceeds with the phase transition.
+    ///
+    /// Parameters:
+    /// - `pool`: Mutable reference to the Refund Pool transitioning to the reclaim phase.
+    /// - `clock`: Reference to the system clock, used for timestamp verification.
     public entry fun start_reclaim_phase(
         pool: &mut RefundPool,
         clock: &Clock,

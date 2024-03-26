@@ -217,7 +217,106 @@ module refund::refund_tests {
             &mut scenario,
         );
 
-        // TODO: check that base pool is empty, and that reclaimed boosted funds values are correct
+        test_utils::destroy_and_check(refund_pool);
+        ts::return_to_address(publisher(), pub);
+        clock::destroy_for_testing(clock);
+        ts::end(scenario);
+    }
+    
+    #[test]
+    #[expected_failure(abort_code = refund::booster::EAddressRetrievedBoostCap)]
+    fun test_fail_issue_multiple_boost_caps() {
+        let scenario = ts::begin(publisher());
+
+        // Act: Initialize the refund pool
+        let otw = refund::get_otw_for_testing();
+        refund::init_test(otw, ctx(&mut scenario));
+
+        // Assert: Verify initialization logic such as checking for a non-empty RefundPool, correct `id`, and initial `accounting` values.
+        // This might include checking the `unclaimed` table is empty, `funds` are zero, etc.
+        // Assertions here will depend on functions or methods provided by the test framework to inspect the state.
+        ts::next_tx(&mut scenario, publisher());
+
+        let pub = ts::take_from_address<Publisher>(&scenario, publisher());
+        assert!(package::from_package<REFUND>(&pub), 0);
+
+        let refund_pool = ts::take_shared<RefundPool>(&scenario);
+
+        // 1. Phanse 0: Add affected addresses to refund pool
+        refund::add_addresses(
+            &pub,
+            &mut refund_pool,
+            vector[wallet_1(), wallet_2(), wallet_3()],
+            vector[2_000, 2_000, 2_000],
+        );
+
+        ts::next_tx(&mut scenario, publisher());
+        let clock = clock::create_for_testing(ctx(&mut scenario));
+    
+        // The community agrees on a timeout timestamp, which reflects the point
+        // from which the funders can recoup the unclaim funds. Sufficient time
+        // must pass to allow all affected wallets to claim their refund.
+        // Once the community has spent enought time verifying the addresses
+        // and we have the OK from the community, the publisher will call:
+        refund::start_funding_phase(
+            &pub,
+            &mut refund_pool,
+            1717196400, // Fri May 31 2024 23:00:00 GMT+0000
+            &clock
+        );
+
+        ts::next_tx(&mut scenario, FUNDER_1);
+
+        refund::fund(
+            &mut refund_pool,
+            coin::mint_for_testing<SUI>(4_000,ctx(&mut scenario)),
+            ctx(&mut scenario),
+        );
+        
+        booster::fund(
+            &mut refund_pool,
+            coin::mint_for_testing<SUI>(2_000,ctx(&mut scenario)),
+            ctx(&mut scenario),
+        );
+        
+        ts::next_tx(&mut scenario, FUNDER_2);
+
+        refund::fund(
+            &mut refund_pool,
+            coin::mint_for_testing<SUI>(2_000,ctx(&mut scenario)),
+            ctx(&mut scenario),
+        );
+
+        booster::fund(
+            &mut refund_pool,
+            coin::mint_for_testing<SUI>(1_000,ctx(&mut scenario)),
+            ctx(&mut scenario),
+        );
+
+        ts::next_tx(&mut scenario, publisher());
+
+        // Permissionless endpoint to transition to claim phase
+        refund::start_claim_phase(&mut refund_pool, &clock);
+        
+        ts::next_tx(&mut scenario, publisher());
+
+        booster::allow_boosted_claim(
+            &pub,
+            &mut refund_pool,
+            wallet_1(),
+            rinbot_1(),
+            ctx(&mut scenario),
+        );
+
+        ts::next_tx(&mut scenario, publisher());
+
+        booster::allow_boosted_claim(
+            &pub,
+            &mut refund_pool,
+            wallet_1(),
+            FAKE_WALLET,
+            ctx(&mut scenario),
+        );
 
         test_utils::destroy_and_check(refund_pool);
         ts::return_to_address(publisher(), pub);
@@ -873,7 +972,8 @@ module refund::refund_tests {
             } else if (status == 2) {
                 actual_claim_amount = amt(&claim) + div(amt(&claim), 2);
                 let cap = booster::new_for_testing(sender, ctx(&mut scenario));
-                booster::claim_refund_boosted(cap, &mut refund_pool, &clock, ctx(&mut scenario));
+
+                booster::claim_refund_boosted(cap, &mut refund_pool, sender, &clock, ctx(&mut scenario));
             };
 
             if (status != 3) {

@@ -2,12 +2,19 @@ module refund::accounting {
     friend refund::refund;
     friend refund::booster;
 
-    /// Contains accounting details relevant to the management of the RefundPool.
+
+    /// Tracks financial metrics related to fundraising and refunds.
     ///
     /// Fields:
-    /// - `total_refunded`: The cumulative amount of funds that have been refunded to users. This includes both standard and boosted refunds.
-    /// - `total_boosted`: The total amount of funds provided as part of boosted refunds. This figure helps track the additional funds given out as part of special refund conditions, such as the 150% refund scenario.
-    /// - `current_liability`: Represents the total amount of funds that the RefundPool is currently obligated to pay out. This includes all unclaimed refunds and is used to manage the financial health and obligations of the pool.
+    /// - `total_to_refund`: The total amount of funds designated for refunds.
+    /// - `total_raised`: The total amount of funds raised, including both
+    /// standard and boosted fund contributions.
+    /// - `total_claimed`: The total amount of funds that have been claimed
+    /// as refunds by eligible addresses.
+    /// - `total_raised_for_boost`: The total amount of funds raised specifically
+    /// for the purpose of providing boosted refunds.
+    /// - `total_boosted`: The total amount of funds that have been distributed
+    /// as boosted refunds.
     struct Accounting has store {
         total_to_refund: u64,
         total_raised: u64,

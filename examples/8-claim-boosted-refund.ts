@@ -8,6 +8,8 @@ import {
   validateEnvVariable,
 } from "./utils";
 
+// TODO: add support for rinbot_address field
+
 // yarn ts-node examples/refund/claim-boosted-refund.ts
 (async () => {
   const contractAddress = validateEnvVariable("REFUND_PACKAGE_ADDRESS");

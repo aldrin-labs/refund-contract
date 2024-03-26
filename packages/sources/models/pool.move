@@ -7,6 +7,14 @@ module refund::pool {
     friend refund::refund;
     friend refund::booster;
 
+    /// Holds and tracks funds contributed by various addresses.
+    ///
+    /// Fields:
+    /// - `funds`: The total balance of SUI coins in the pool. Used to manage
+    /// the pool's available resources.
+    /// - `funders`: Maps addresses to the amount they contributed. This allows
+    /// tracking of individual contributions and facilitates the management
+    /// of refunds or rewards.
     struct Pool has store {
         funds: Balance<SUI>,
         funders: Table<address, u64>,
