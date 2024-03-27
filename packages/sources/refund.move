@@ -330,6 +330,9 @@ module refund::refund {
     public fun base_funds(pool: &RefundPool): u64 { balance::value(funds(&pool.base_pool)) }
     public fun booster_funds(pool: &RefundPool): u64 { balance::value(funds(&pool.booster_pool)) }
     public fun current_liabilities(pool: &RefundPool): u64 { accounting::current_liabilities(&pool.accounting) }
+    
+    public fun minimum_funding_period_ms(): u64 { MIN_FUNDING_PERIOD_MS }
+    public fun minimum_claim_period_ms(): u64 { MIN_CLAIM_PERIOD_MS }
 
     // === Friends ===
 

@@ -1,6 +1,7 @@
 #[test_only]
 module refund::refund_tests {
     use std::vector;
+    use std::option;
     use sui::test_scenario::{Self as ts, ctx};
     use sui::transfer;
     use sui::balance;
@@ -1081,6 +1082,175 @@ module refund::refund_tests {
         table_vec::drop(claim_status);
         table_vec::drop(unclaimed_vec);
         refund::destroy_for_testing(refund_pool); // todo: checks
+        clock::destroy_for_testing(clock);
+        ts::end(scenario);
+    }
+
+    #[test]
+    fun test_it_updates_timeout_if_below_minimum_claim_period() {
+        let scenario = ts::begin(publisher());
+
+        // Act: Initialize the refund pool
+        let otw = refund::get_otw_for_testing();
+        refund::init_test(otw, ctx(&mut scenario));
+
+        // Assert: Verify initialization logic such as checking for a non-empty RefundPool, correct `id`, and initial `accounting` values.
+        // This might include checking the `unclaimed` table is empty, `funds` are zero, etc.
+        // Assertions here will depend on functions or methods provided by the test framework to inspect the state.
+        ts::next_tx(&mut scenario, publisher());
+
+        let pub = ts::take_from_address<Publisher>(&scenario, publisher());
+        assert!(package::from_package<REFUND>(&pub), 0);
+
+        let refund_pool = ts::take_shared<RefundPool>(&scenario);
+
+        // 1. Phanse 0: Add affected addresses to refund pool
+        refund::add_addresses(
+            &pub,
+            &mut refund_pool,
+            vector[wallet_1(), wallet_2(), wallet_3()],
+            vector[2_000, 2_000, 2_000],
+        );
+
+        ts::next_tx(&mut scenario, publisher());
+
+        let clock = clock::create_for_testing(ctx(&mut scenario));
+
+        let initial_timeout = 1717196400;
+    
+        // The community agrees on a timeout timestamp, which reflects the point
+        // from which the funders can recoup the unclaim funds. Sufficient time
+        // must pass to allow all affected wallets to claim their refund.
+        // Once the community has spent enought time verifying the addresses
+        // and we have the OK from the community, the publisher will call:
+        refund::start_funding_phase(
+            &pub,
+            &mut refund_pool,
+            initial_timeout, // Fri May 31 2024 23:00:00 GMT+0000
+            &clock
+        );
+
+        ts::next_tx(&mut scenario, FUNDER_1);
+        refund::fund(
+            &mut refund_pool,
+            coin::mint_for_testing<SUI>(2_000,ctx(&mut scenario)),
+            ctx(&mut scenario),
+        );
+
+        ts::next_tx(&mut scenario, FUNDER_2);
+        refund::fund(
+            &mut refund_pool,
+            coin::mint_for_testing<SUI>(1_000,ctx(&mut scenario)),
+            ctx(&mut scenario),
+        );
+
+        ts::next_tx(&mut scenario, FUNDER_3);
+        refund::fund(
+            &mut refund_pool,
+            coin::mint_for_testing<SUI>(3_000,ctx(&mut scenario)),
+            ctx(&mut scenario),
+        );
+
+        ts::next_tx(&mut scenario, wallet_1());
+
+
+        // initial timeout = 1717196400
+        let current_time = 1457996401; // <=> 1717196400 - 259_200_000 + 1
+        let new_timeout = current_time + 259_200_000; // <=> current time + 3 days
+        clock::set_for_testing(&mut clock, current_time);
+        
+        // Permissionless endpoint to transition to claim phase
+        refund::start_claim_phase(&mut refund_pool, &clock);
+
+        let timeout = *option::borrow(&refund::timeout_ts(&refund_pool));
+        assert!(timeout == new_timeout, 0);
+     
+        refund::destroy_for_testing(refund_pool);
+        ts::return_to_address(publisher(), pub);
+        clock::destroy_for_testing(clock);
+        ts::end(scenario);
+    }
+    
+    #[test]
+    fun test_it_does_not_update_timeout_if_within_minimum_claim_period_bound() {
+        let scenario = ts::begin(publisher());
+
+        // Act: Initialize the refund pool
+        let otw = refund::get_otw_for_testing();
+        refund::init_test(otw, ctx(&mut scenario));
+
+        // Assert: Verify initialization logic such as checking for a non-empty RefundPool, correct `id`, and initial `accounting` values.
+        // This might include checking the `unclaimed` table is empty, `funds` are zero, etc.
+        // Assertions here will depend on functions or methods provided by the test framework to inspect the state.
+        ts::next_tx(&mut scenario, publisher());
+
+        let pub = ts::take_from_address<Publisher>(&scenario, publisher());
+        assert!(package::from_package<REFUND>(&pub), 0);
+
+        let refund_pool = ts::take_shared<RefundPool>(&scenario);
+
+        // 1. Phanse 0: Add affected addresses to refund pool
+        refund::add_addresses(
+            &pub,
+            &mut refund_pool,
+            vector[wallet_1(), wallet_2(), wallet_3()],
+            vector[2_000, 2_000, 2_000],
+        );
+
+        ts::next_tx(&mut scenario, publisher());
+
+        let clock = clock::create_for_testing(ctx(&mut scenario));
+
+        let initial_timeout = 1717196400;
+    
+        // The community agrees on a timeout timestamp, which reflects the point
+        // from which the funders can recoup the unclaim funds. Sufficient time
+        // must pass to allow all affected wallets to claim their refund.
+        // Once the community has spent enought time verifying the addresses
+        // and we have the OK from the community, the publisher will call:
+        refund::start_funding_phase(
+            &pub,
+            &mut refund_pool,
+            initial_timeout, // Fri May 31 2024 23:00:00 GMT+0000
+            &clock
+        );
+
+        ts::next_tx(&mut scenario, FUNDER_1);
+        refund::fund(
+            &mut refund_pool,
+            coin::mint_for_testing<SUI>(2_000,ctx(&mut scenario)),
+            ctx(&mut scenario),
+        );
+
+        ts::next_tx(&mut scenario, FUNDER_2);
+        refund::fund(
+            &mut refund_pool,
+            coin::mint_for_testing<SUI>(1_000,ctx(&mut scenario)),
+            ctx(&mut scenario),
+        );
+
+        ts::next_tx(&mut scenario, FUNDER_3);
+        refund::fund(
+            &mut refund_pool,
+            coin::mint_for_testing<SUI>(3_000,ctx(&mut scenario)),
+            ctx(&mut scenario),
+        );
+
+        ts::next_tx(&mut scenario, wallet_1());
+
+
+        // initial timeout = 1717196400
+        let current_time = 1717196400 - 259_200_000 - 1;
+        clock::set_for_testing(&mut clock, current_time);
+        
+        // Permissionless endpoint to transition to claim phase
+        refund::start_claim_phase(&mut refund_pool, &clock);
+
+        let timeout = *option::borrow(&refund::timeout_ts(&refund_pool));
+        assert!(initial_timeout == timeout, 0);
+     
+        refund::destroy_for_testing(refund_pool);
+        ts::return_to_address(publisher(), pub);
         clock::destroy_for_testing(clock);
         ts::end(scenario);
     }
