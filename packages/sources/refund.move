@@ -452,7 +452,7 @@ module refund::refund {
 
         // We check if there's at least 3 days difference between the clock and the timeout.
         // If not, we bump the timeout_ts to correspond to a least the minimum period
-        if (timeout_ts - current_ts >= MIN_CLAIM_PERIOD_MS) {
+        if (timeout_ts - current_ts < MIN_CLAIM_PERIOD_MS) {
             option::swap(&mut pool.timeout_ts, current_ts + MIN_CLAIM_PERIOD_MS);
         };
 
