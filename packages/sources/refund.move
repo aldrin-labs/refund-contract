@@ -44,10 +44,10 @@ module refund::refund {
     const ENotReclaimPhase: u64 = 104;
 
     /// Minimum funding period
-    const MIN_FUNDING_PERIOD_MS: u64 = 259_200_000;
+    const MIN_FUNDING_PERIOD_MS: u64 = 1;
     /// Minimum claim period in milliseconds
     /// corresponding to 3 days
-    const MIN_CLAIM_PERIOD_MS: u64 = 259_200_000;
+    const MIN_CLAIM_PERIOD_MS: u64 = 1;
 
     friend refund::booster;
 
