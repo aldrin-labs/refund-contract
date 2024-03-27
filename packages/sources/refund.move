@@ -43,6 +43,8 @@ module refund::refund {
     const ENotClaimPhase: u64 = 103;
     const ENotReclaimPhase: u64 = 104;
 
+    /// Minimum funding period
+    const MIN_FUNDING_PERIOD_MS: u64 = 259_200_000;
     /// Minimum claim period in milliseconds
     /// corresponding to 3 days
     const MIN_CLAIM_PERIOD_MS: u64 = 259_200_000;
@@ -407,7 +409,7 @@ module refund::refund {
         assert_address_addition_phase(pool);
         assert!(!table::is_empty(&pool.unclaimed), ERefundPoolHasZeroAddresses);
         
-        assert!(timeout_ts >= clock::timestamp_ms(clock) + MIN_CLAIM_PERIOD_MS, EInvalidTimeoutTimestamp);
+        assert!(timeout_ts >= clock::timestamp_ms(clock) + MIN_FUNDING_PERIOD_MS + MIN_CLAIM_PERIOD_MS, EInvalidTimeoutTimestamp);
         option::fill(&mut pool.timeout_ts, timeout_ts);
 
         next_phase(pool)
@@ -417,6 +419,10 @@ module refund::refund {
     /// can start claiming their refunds. This transition is allowed only
     /// after the funding phase has concluded and the total funds raised
     /// match the total amount set for refunds.
+    /// 
+    /// We compute the time period remaining for the claim phase, and in case
+    /// it is below the `MIN_CLAIM_PERIOD_MS` we bump the `timeout_ts` to correspond
+    /// to the minimum amount.
     ///
     /// Panics:
     /// - If the pool is not in the funding phase, ensuring the transition
@@ -441,6 +447,14 @@ module refund::refund {
         assert_funding_phase(pool);
         let timeout_ts = *option::borrow(&pool.timeout_ts);
         assert_claim_phase_time(timeout_ts, clock);
+
+        let current_ts = clock::timestamp_ms(clock);
+
+        // We check if there's at least 3 days difference between the clock and the timeout.
+        // If not, we bump the timeout_ts to correspond to a least the minimum period
+        if (timeout_ts - current_ts >= MIN_CLAIM_PERIOD_MS) {
+            option::swap(&mut pool.timeout_ts, current_ts + MIN_CLAIM_PERIOD_MS);
+        };
 
         let total_to_refund = total_to_refund(&pool.accounting);
         let total_raised = total_raised(&pool.accounting);
