@@ -208,6 +208,16 @@ module refund::booster {
 
         let _: bool = df::remove(uid_mut(pool), BoostedCapDfKey { affected_address });
     }
+    
+    /// Removes a `BoostedClaimCap` object from storage, effectively
+    /// performing garbage collection on caps that have outlived their
+    /// usefulness, such as those not claimed within the designated timeframe.
+    public fun delete(
+        cap: BoostedClaimCap,
+    ) {
+        let BoostedClaimCap { id, new_address: _ } = cap;
+        object::delete(id);
+    }
 
     // === Phase 4: Reclaim Fund ===
 
