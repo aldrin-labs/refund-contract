@@ -1,0 +1,21 @@
+{
+    "name": "refund-contract",
+    "version": "1.0.0",
+    "description": "### Context This contract relates to refunding effort following the PIKKA SUI memecoin rugpull that took place on the 18th March 2024. For more context:",
+    "main": "index.js",
+    "scripts": {
+      "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "devDependencies": {
+      "typescript": "^5.4.2"
+    },
+    "dependencies": {
+      "@mysten/sui.js": "^0.51.0",
+      "blakejs": "^1.2.1",
+      "tweetnacl": "^1.0.3",
+      "tweetnacl-util": "^0.15.1"
+    }
+  }
