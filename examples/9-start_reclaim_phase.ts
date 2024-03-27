@@ -8,7 +8,7 @@ import {
   validateEnvVariable,
 } from "./utils";
 
-// yarn ts-node examples/claim-boosted-refund.ts
+// yarn ts-node examples/9-start_reclaim_phase.ts
 (async () => {
   const contractAddress = validateEnvVariable("REFUND_PACKAGE_ADDRESS");
   const poolId = validateEnvVariable("REFUND_POOL_OBJECT_ID");

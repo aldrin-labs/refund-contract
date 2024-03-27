@@ -10,7 +10,7 @@ import {
 
 // TODO: add support for rinbot_address field
 
-// yarn ts-node examples/claim-boosted-refund.ts
+// yarn ts-node examples/8-claim-boosted-refund.ts
 (async () => {
   const contractAddress = validateEnvVariable("REFUND_PACKAGE_ADDRESS");
   const poolId = validateEnvVariable("REFUND_POOL_OBJECT_ID");
