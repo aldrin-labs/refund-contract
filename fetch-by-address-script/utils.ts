@@ -286,3 +286,21 @@ export async function saveDataToJsonFile(data: object | object[], filename: stri
     console.error("Error saving data to file:", error);
   }
 }
+
+/**
+ * Calculates the total amount of funds collected by summing the 'amount' values in the given array of aggregated amounts.
+ * @param {Array<{ affectedAddress: string, amount: string }>} aggregatedAmounts
+ * The array containing the aggregated amounts.
+ * @return {BigNumber} The total amount of funds collected.
+ */
+export function calculateTotalFundsFromAggregatedAmounts(
+  aggregatedAmounts: Array<{ affectedAddress: string, amount: string }>
+): BigNumber {
+  let totalAmount = new BigNumber(0);
+
+  aggregatedAmounts.forEach((entry) => {
+    totalAmount = totalAmount.plus(new BigNumber(entry.amount));
+  });
+
+  return totalAmount;
+}

@@ -14,7 +14,9 @@ import {
   calculateTotalFunds,
   sortByTimestamp,
   sortByAmount,
+  calculateTotalFundsFromAggregatedAmounts,
 } from "./utils";
+import { aggregateAmountsBySender } from "./aggregateAmountsBySender";
 
 export const fetchTransactions = async ({
   url,
@@ -142,8 +144,15 @@ export const fetchTransactions = async ({
   checkSenderUniqueness(filtredOutTransactionData);
 
   const totalFunds = calculateTotalFunds(filtredOutTransactionData);
-  console.log("Total funds collected (raw, in MIST): ", totalFunds.toString());
-  console.log("Total funds collected (in SUI): ", totalFunds.div(SUI_DENOMINATOR).toString());
+  console.log("Total funds collected (not aggregated) (raw, in MIST): ", totalFunds.toString());
+  console.log("Total funds collected (not aggregated) (in SUI): ", totalFunds.div(SUI_DENOMINATOR).toString());
+
+  // Aggreated amounts by sender
+  const aggreatedAmountsBySenderList = aggregateAmountsBySender(filtredOutTransactionData);
+  const totalFundsByAggregatedResult = calculateTotalFundsFromAggregatedAmounts(aggreatedAmountsBySenderList)
+  console.log("Total funds collected (aggregated) (raw, in MIST): ", totalFundsByAggregatedResult.toString());
+  console.log("Total funds collected (aggregated) (in SUI): ", totalFundsByAggregatedResult.div(SUI_DENOMINATOR).toString());
+  saveDataToJsonFile(aggreatedAmountsBySenderList, "fetched-txs-to-romas-address-aggregated");
 
   saveDataToJsonFile(filtredOutTransactionData, "fetched-txs-to-romas-address");
   saveDataToJsonFile(sortByTimestamp(filtredOutTransactionData), "fetched-txs-to-romas-address-order-by-timestamp");

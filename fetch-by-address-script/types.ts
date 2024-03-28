@@ -39,3 +39,8 @@ export interface ValidationResult {
   senderAmountExcludingGas?: BigNumber;
   senderAmountIncludingGas?: BigNumber;
 }
+
+export interface AggregatedAmount {
+  affectedAddress: string;
+  amount: string;
+}
