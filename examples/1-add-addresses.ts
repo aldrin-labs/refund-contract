@@ -9,7 +9,7 @@ import {
   validateEnvVariable,
 } from "./utils";
 
-// yarn ts-node examples/refund/claim-boosted-refund.ts
+// yarn ts-node examples/1-add-addresses.ts
 (async () => {
   const addressesString: string = process.argv[2];
   const amountsString: string = process.argv[3];

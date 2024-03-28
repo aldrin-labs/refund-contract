@@ -7,7 +7,7 @@ import {
   validateEnvVariable,
 } from "./utils";
 
-// yarn ts-node examples/refund/claim-boosted-refund.ts
+// yarn ts-node examples/fund.ts
 (async () => {
   const CoinObjectId = process.argv[2]!;
 
