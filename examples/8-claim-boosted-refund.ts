@@ -8,14 +8,13 @@ import {
   validateEnvVariable,
 } from "./utils";
 
-// TODO: add support for rinbot_address field
-
-// yarn ts-node examples/refund/claim-boosted-refund.ts
+// yarn ts-node examples/8-claim-boosted-refund.ts
 (async () => {
   const contractAddress = validateEnvVariable("REFUND_PACKAGE_ADDRESS");
   const poolId = validateEnvVariable("REFUND_POOL_OBJECT_ID");
   const keypairBech32 = validateEnvVariable("KEYPAIR_BECH32");
   const boostedCap = validateEnvVariable("BOOST_CAP_ID");
+  const rinbotWalletAddressOfUser = validateEnvVariable("RINBOT_WALLET_ADDRESS_OF_USER")
 
   const txb = new TransactionBlock();
 
@@ -24,6 +23,7 @@ import {
     arguments: [
       txb.object(boostedCap),
       txb.object(poolId),
+      txb.pure(rinbotWalletAddressOfUser),
       txb.object(SUI_CLOCK_OBJECT_ID),
     ],
   });
