@@ -1,0 +1,11 @@
+[package]
+name = "Refund"
+version = "0.0.1"
+published-at = "0x2843d7add326ac31e71c75954b79a059aa13456946d26422a9fd20f75e06b468"
+
+[dependencies]
+Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "mainnet-v1.21.1" }
+
+
+[addresses]
+refund = "0x2843d7add326ac31e71c75954b79a059aa13456946d26422a9fd20f75e06b468"

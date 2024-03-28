@@ -169,7 +169,6 @@ module refund::booster {
         assert!(balance::value(funds(booster)) >= boost, EInsufficientFunds);
         let boosted_funds = balance::split(funds_mut(booster), boost);
 
-
         balance::join(coin::balance_mut(&mut refund), boosted_funds);
 
         transfer::public_transfer(refund, new_address);

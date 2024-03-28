@@ -20,6 +20,8 @@ module refund::pool {
         funders: Table<address, u64>,
     }
 
+    // === Mutators (friends) ===
+
     public(friend) fun new(ctx: &mut TxContext): Pool {
         Pool {
             funds: balance::zero(),

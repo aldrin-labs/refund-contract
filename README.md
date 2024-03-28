@@ -1,5 +1,7 @@
 # Refund Contract
 
+Refund Pool: `0x82544a2f83c6ed1c1092d4b0e92837e2c3bd983228dd6529da632070b6657a97`
+
 ### Context
 This contract relates to refunding effort following the PIKKA SUI memecoin rugpull that took place on the 18th March 2024. For more context:
 

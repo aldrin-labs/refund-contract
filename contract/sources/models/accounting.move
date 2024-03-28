@@ -2,7 +2,6 @@ module refund::accounting {
     friend refund::refund;
     friend refund::booster;
 
-
     /// Tracks financial metrics related to fundraising and refunds.
     ///
     /// Fields:
