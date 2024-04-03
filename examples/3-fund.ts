@@ -7,7 +7,7 @@ import {
   validateEnvVariable,
 } from "./utils";
 
-// yarn ts-node examples/fund.ts
+// yarn ts-node examples/3-fund.ts
 (async () => {
   const contractAddress = validateEnvVariable("REFUND_PACKAGE_ADDRESS");
   const poolId = validateEnvVariable("REFUND_POOL_OBJECT_ID");
