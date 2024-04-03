@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { TransactionBlock } from "@mysten/sui.js/transactions";
 import { Ed25519Keypair } from "@mysten/sui.js/keypairs/ed25519";
 import {
