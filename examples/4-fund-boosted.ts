@@ -17,7 +17,9 @@ import {
   );
 
   const txb = new TransactionBlock();
-  const [coin] = txb.splitCoins(txb.gas, [txb.pure(98800370941221, "u64")]);
+  // Please note: the amount for the boosted refund is taken from the output logs of fetch-by-address-script/fetch-transaction-by-address.ts.
+  const amountForBoostedRefund = 98800370941221
+  const [coin] = txb.splitCoins(txb.gas, [txb.pure(amountForBoostedRefund, "u64")]);
 
   txb.moveCall({
     target: `${contractAddress}::booster::fund`,
