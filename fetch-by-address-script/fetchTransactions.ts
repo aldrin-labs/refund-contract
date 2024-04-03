@@ -158,6 +158,24 @@ export const fetchTransactions = async ({
   saveDataToJsonFile(sortByTimestamp(filtredOutTransactionData), "fetched-txs-to-romas-address-order-by-timestamp");
   saveDataToJsonFile(sortByAmount(filtredOutTransactionData), "fetched-txs-to-romas-address-order-by-amount");
 
+  // Just for output values which should be used in examples/3-fund.ts
+  const baseAmountInMist = totalFundsByAggregatedResult.toString()
+  const baseAmountInSui = new BigNumber(baseAmountInMist).div(SUI_DENOMINATOR).toString();
+
+  const boostedAmountInMist = new BigNumber(baseAmountInMist).div(2).toString();
+  const boostedAmountInSui = new BigNumber(boostedAmountInMist).div(SUI_DENOMINATOR).toString();
+
+  const totalAmountInMist = new BigNumber(baseAmountInMist).plus(boostedAmountInMist).toString();
+  const totalAmountInSui = new BigNumber(totalAmountInMist).div(SUI_DENOMINATOR).toString();
+
+  console.log("BASE AMOUNT FOR ALL WALLETS (MIST): ", baseAmountInMist);
+  console.log("BASE AMOUNT FOR ALL WALLETS (SUI): ", baseAmountInSui);
+  console.log("BOOSTED AMOUNT FOR ALL WALLETS (MIST): ", boostedAmountInMist);
+  console.log("BOOSTED AMOUNT FOR ALL WALLETS (SUI): ", boostedAmountInSui);
+  console.log("TOTAL AMOUNT FOR ALL WALLETS (MIST): ", totalAmountInMist);
+  console.log("TOTAL AMOUNT FOR ALL WALLETS (SUI): ", totalAmountInSui);
+
+
   console.debug("Finished retrieving transactions.");
 
   return filtredOutTransactionData;
