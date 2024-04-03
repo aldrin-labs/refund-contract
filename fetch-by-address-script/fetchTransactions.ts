@@ -154,6 +154,8 @@ export const fetchTransactions = async ({
   console.log("Total funds collected (aggregated) (in SUI): ", totalFundsByAggregatedResult.div(SUI_DENOMINATOR).toString());
   saveDataToJsonFile(aggreatedAmountsBySenderList, "fetched-txs-to-romas-address-aggregated");
 
+  console.debug("aggreatedAmountsBySenderList.length: ", aggreatedAmountsBySenderList.length)
+
   saveDataToJsonFile(filtredOutTransactionData, "fetched-txs-to-romas-address");
   saveDataToJsonFile(sortByTimestamp(filtredOutTransactionData), "fetched-txs-to-romas-address-order-by-timestamp");
   saveDataToJsonFile(sortByAmount(filtredOutTransactionData), "fetched-txs-to-romas-address-order-by-amount");
@@ -178,5 +180,10 @@ export const fetchTransactions = async ({
 
   console.debug("Finished retrieving transactions.");
 
-  return filtredOutTransactionData;
+  return {
+    aggreatedAmountsBySenderList,
+    filtredOutTransactionData,
+    sortedByTimestamp: sortByTimestamp(filtredOutTransactionData),
+    sortedByAmount: sortByAmount(filtredOutTransactionData)
+  };
 };
