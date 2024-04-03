@@ -15,6 +15,7 @@
         "typescript": "^5.4.2"
     },
     "dependencies": {
+        "dotenv": "^16.3.1",
         "@mysten/sui.js": "^0.51.0",
         "bignumber.js": "^9.1.2",
         "blakejs": "^1.2.1",
