@@ -15,7 +15,7 @@ export const RPC_URL_FOR_TRANSACTIONS_POOL_STATE = "https://mainnet.suiet.app";
 export const TARGET_POOL_OBJECT_ID =
   "0x82544a2f83c6ed1c1092d4b0e92837e2c3bd983228dd6529da632070b6657a97";
 
-// yarn ts-node fetch-pool-state/fetch-pool-state.ts > fetch-pool-state.txt 2>&1
+// yarn ts-node fetch-pool-state-script/fetch-pool-state.ts > fetch-pool-state.txt 2>&1
 export const fetchPoolState = async () => {
   const requestBody = getJsonBodyToFetchPoolState(TARGET_POOL_OBJECT_ID);
   const response = await fetch(RPC_URL_FOR_TRANSACTIONS_POOL_STATE, {
