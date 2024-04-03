@@ -31,5 +31,5 @@ The workflow works as follows:
 1. Clone the repo
 2. Install dependencies by running `npm install`
 3. Create `.env` in the root of the repo directory
-4. Set up `REFUND_PACKAGE_ADDRESS`, `REFUND_POOL_OBJECT_ID` and `KEYPAIR_BECH32` variables. The `REFUND_PACKAGE_ADDRESS` and `REFUND_POOL_OBJECT_ID` should correspond to the production version of Refund Contract. The `KEYPAIR_BECH32` variable should represent the keypair of an account that will fund the Refund Pool.
+4. Set up `REFUND_PACKAGE_ADDRESS`, `REFUND_POOL_OBJECT_ID` and `KEYPAIR_BECH32` variables. The `REFUND_PACKAGE_ADDRESS` and `REFUND_POOL_OBJECT_ID` should correspond to the production version of Refund Contract. The `KEYPAIR_BECH32` variable should represent the private key of an account in bech32 format (starts with `suiprivkey`) that will fund the Refund Pool.
 5. Run the `examples/3-fund.ts` by executing `yarn ts-node examples/3-fund.ts`.
